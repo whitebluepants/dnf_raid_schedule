@@ -1,14 +1,25 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-
-const signupCharacters = [
-  { id: "破军", account: "蓝色账号", role: "C", fame: 84_520, checked: true },
-  { id: "奶妈一号", account: "蓝色账号", role: "奶", fame: 78_300, checked: true },
-  { id: "机械七号", account: "备用账号", role: "C", fame: 76_110, checked: false },
-];
+import { RegistrationForm } from "@/features/activities/registration-form";
+import { getActivity, getSignup, listSignupCharacters } from "@/features/activities/repository";
+import { CurrentSpaceError, requireCurrentSpace } from "@/lib/current-space";
+import { createServerClient } from "@/lib/supabase/server";
 
 export default async function SignupPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
-  return <div className="mx-auto max-w-3xl space-y-6"><section><p className="text-sm font-semibold text-cyan-700">活动报名 · {eventId}</p><h1 className="mt-1 text-3xl font-bold">选择本次可用角色</h1><p className="mt-2 text-sm text-slate-600">报名后团长会把角色放入不同波次；同一角色一周内不能重复出场。</p></section><Card className="p-5"><label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"><input type="checkbox" defaultChecked className="size-5 accent-cyan-600" /> <span><span className="block font-semibold">本次参加</span><span className="text-sm text-slate-500">如果临时鸽了，可以由团长在排表中标记缺席并重新生成。</span></span></label><div className="mt-5 space-y-3">{signupCharacters.map((character) => <label key={character.id} className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 p-4 hover:border-cyan-400"><span className="flex items-center gap-3"><input type="checkbox" defaultChecked={character.checked} className="size-5 accent-cyan-600" /><span><span className="block font-semibold">{character.id} <Badge className="ml-1">{character.role}</Badge></span><span className="text-sm text-slate-500">{character.account} · {character.fame.toLocaleString()} 名望</span></span></span><span className="text-xs text-slate-500">本周未使用</span></label>)}</div><div className="mt-6 flex justify-end"><Button className="bg-cyan-600 text-white">保存报名</Button></div></Card></div>;
+  const client = await createServerClient();
+  try {
+    const space = await requireCurrentSpace(client);
+    const eventResult = await getActivity(client, eventId, space.groupId);
+    if (!eventResult.ok) return <div className="mx-auto max-w-3xl rounded-2xl bg-rose-50 p-6 text-rose-900"><h1 className="text-xl font-bold">无法读取活动</h1><p className="mt-2 text-sm">{eventResult.error}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href="/activities">返回活动列表</a></div>;
+    if (!eventResult.value) return <div className="mx-auto max-w-3xl rounded-2xl bg-amber-50 p-6 text-amber-900"><h1 className="text-xl font-bold">找不到这个活动</h1><p className="mt-2 text-sm">活动可能已归档，或不属于当前空间。</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href="/activities">返回活动列表</a></div>;
+    const event = eventResult.value;
+    const [charactersResult, signupResult] = await Promise.all([listSignupCharacters(client, space), getSignup(client, eventId, space.profileId)]);
+    if (!charactersResult.ok) return <div className="mx-auto max-w-3xl rounded-2xl bg-rose-50 p-6 text-rose-900"><h1 className="text-xl font-bold">无法读取报名信息</h1><p className="mt-2 text-sm">{charactersResult.error}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href={`/activities/${eventId}/signup`}>重新加载</a></div>;
+    if (!signupResult.ok) return <div className="mx-auto max-w-3xl rounded-2xl bg-rose-50 p-6 text-rose-900"><h1 className="text-xl font-bold">无法读取报名信息</h1><p className="mt-2 text-sm">{signupResult.error}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href={`/activities/${eventId}/signup`}>重新加载</a></div>;
+    const characters = charactersResult.value;
+    const signup = signupResult.value;
+    return <div className="mx-auto max-w-3xl space-y-6"><section><p className="text-sm font-semibold text-cyan-700">活动报名</p><h1 className="mt-1 text-3xl font-bold">{event.title}</h1><p className="mt-2 text-sm text-slate-600">只可报名当前空间内属于你的未归档角色。保存后团长才能将其纳入排表。</p></section><Card className="p-5"><RegistrationForm eventId={eventId} characters={characters} initialState={signup?.state ?? "participating"} initialCharacterIds={signup?.characterIds ?? []} /></Card></div>;
+  } catch (error) {
+    return <div className="mx-auto max-w-3xl rounded-2xl bg-amber-50 p-6 text-amber-900"><h1 className="text-xl font-bold">无法打开报名</h1><p className="mt-2 text-sm">{error instanceof CurrentSpaceError ? "请先在空间页选择可访问的空间。" : "请稍后刷新后重试。"}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href="/spaces">前往空间页</a></div>;
+  }
 }

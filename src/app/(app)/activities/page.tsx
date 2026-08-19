@@ -1,76 +1,22 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { generateSchedule } from "@/features/scheduling/generate-schedule";
-import type { CandidateCharacter } from "@/features/scheduling/types";
-import { ScheduleRealtimeIndicator } from "@/features/schedule-workbench/realtime-indicator";
+import { EventForm } from "@/features/activities/event-form";
+import { canManageActivities, listActivities } from "@/features/activities/repository";
+import { CurrentSpaceError, requireCurrentSpace } from "@/lib/current-space";
+import { createServerClient } from "@/lib/supabase/server";
 
-const demoCharacters: CandidateCharacter[] = [
-  ...Array.from({ length: 4 }, (_, index) => ({
-    id: `demo-buffer-${index}`,
-    accountId: `demo-account-${index}`,
-    profileId: `demo-profile-${index % 3}`,
-    role: "buffer" as const,
-    fame: 72_000 - index * 500,
-    strengthTier: index === 0 ? ("high" as const) : ("medium" as const),
-    damageScore: null,
-    buffScore: 1_000 - index * 50,
-  })),
-  ...Array.from({ length: 12 }, (_, index) => ({
-    id: `demo-dealer-${index}`,
-    accountId: `demo-account-${index + 4}`,
-    profileId: `demo-profile-${index % 4}`,
-    role: "dealer" as const,
-    fame: 84_000 - index * 400,
-    strengthTier: index < 4 ? ("high" as const) : index < 9 ? ("medium" as const) : ("low" as const),
-    damageScore: 1_200 - index * 35,
-    buffScore: null,
-  })),
-];
+const difficultyLabel = { normal: "普通", hard: "困难", judgment: "审判" } as const;
 
-const demoSchedule = generateSchedule({
-  characters: demoCharacters,
-  waves: [
-    { id: "wave-1", difficulty: "hard" },
-    { id: "wave-2", difficulty: "hard" },
-    { id: "wave-3", difficulty: "normal" },
-  ],
-});
-
-const roleLabel = { buffer: "奶", dealer: "C" } as const;
-const teamLabel = { red: "红队", yellow: "黄队", green: "绿队" } as const;
-
-export default function ActivitiesPage() {
-  return (
-    <div className="space-y-6">
-      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-sm font-semibold text-cyan-700">2026-08-22 · 米歇尔攻坚</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">本周开团排表</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-3"><p className="text-sm text-slate-600">当前是演示草稿，团长可以在生成后拖拽调整、锁定和发布。</p><ScheduleRealtimeIndicator raidEventId="00000000-0000-0000-0000-000000000401" /></div>
-        </div>
-        <div className="flex gap-2"><Button className="bg-slate-900 text-white hover:bg-slate-700">重新生成</Button><Button className="bg-cyan-600 text-white hover:bg-cyan-500">发布排表</Button></div>
-      </section>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="p-4"><p className="text-sm text-slate-500">已排波次</p><p className="mt-1 text-2xl font-bold">{demoSchedule.waves.filter((wave) => wave.gaps.length === 0).length} / {demoSchedule.waves.length}</p></Card>
-        <Card className="p-4"><p className="text-sm text-slate-500">报名角色</p><p className="mt-1 text-2xl font-bold">{demoCharacters.length}</p></Card>
-        <Card className="p-4"><p className="text-sm text-slate-500">候补</p><p className="mt-1 text-2xl font-bold">{demoSchedule.candidates.length}</p></Card>
-      </div>
-
-      <div className="space-y-5">
-        {demoSchedule.waves.map((wave, index) => (
-          <Card key={wave.id} className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-5"><div className="flex items-center gap-3"><h2 className="font-bold">第 {index + 1} 波</h2><Badge className={wave.difficulty === "hard" ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}>{wave.difficulty === "hard" ? "困难" : "普通"}</Badge></div><span className="text-xs text-slate-500">草稿 · 可调整</span></div>
-            <div className="grid gap-4 p-4 lg:grid-cols-3 sm:p-5">
-              {Object.entries(wave.teams).map(([color, team]) => (
-                <section key={color} aria-label={teamLabel[color as keyof typeof teamLabel]} className="rounded-xl border border-slate-200 p-3"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold">{teamLabel[color as keyof typeof teamLabel]}</h3><span className="text-xs text-slate-500">{team.slots.filter((slot) => slot.character).length}/4</span></div><div className="space-y-2">{team.slots.map((slot) => <div key={slot.slotId} className={`rounded-lg border p-3 ${slot.character ? "border-slate-200 bg-white" : "border-dashed border-amber-300 bg-amber-50"}`}><div className="flex items-center justify-between text-xs text-slate-500"><span>{roleLabel[slot.role]}位</span>{slot.locked && <span>已锁定</span>}</div><p className="mt-1 truncate text-sm font-semibold">{slot.character ? `${slot.character.id} · ${slot.character.fame.toLocaleString()} 名望` : "待补位"}</p></div>)}</div></section>
-              ))}
-            </div>
-            {wave.gaps.length > 0 && <p className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">缺口：{wave.gaps.map((gap) => `${teamLabel[gap.team]}${roleLabel[gap.role]}`).join("、")}</p>}
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+export default async function ActivitiesPage() {
+  const client = await createServerClient();
+  try {
+    const space = await requireCurrentSpace(client);
+    const activitiesResult = await listActivities(client, space.groupId);
+    if (!activitiesResult.ok) return <div className="mx-auto max-w-2xl rounded-2xl bg-rose-50 p-6 text-rose-900"><h1 className="text-xl font-bold">无法读取活动</h1><p className="mt-2 text-sm">{activitiesResult.error}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href="/activities">重新加载</a></div>;
+    const activities = activitiesResult.value;
+    const canManage = canManageActivities(space);
+    return <div className="space-y-6"><section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-cyan-700">当前空间活动</p><h1 className="mt-1 text-3xl font-bold tracking-tight">开团与报名</h1><p className="mt-2 text-sm text-slate-600">成员可以查看活动并报名自己的角色；管理员可以创建多波活动。</p></div><p className="text-sm text-slate-500">{activities.length} 个进行中活动</p></section>{canManage ? <EventForm /> : null}<section className="space-y-4" aria-label="活动列表">{activities.map((activity) => <Card key={activity.id} className="p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold">{activity.title}</h2><Badge className="bg-slate-100 text-slate-700">{activity.status === "draft" ? "报名中" : activity.status}</Badge></div><p className="mt-2 text-sm text-slate-600">{new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(activity.eventDate))} · 游戏周 {activity.gameWeek}</p><div className="mt-3 flex flex-wrap gap-2">{activity.waves.map((wave) => <Badge key={wave.id} className={wave.difficulty === "hard" ? "bg-rose-50 text-rose-700" : wave.difficulty === "judgment" ? "bg-violet-50 text-violet-700" : "bg-emerald-50 text-emerald-700"}>第 {wave.number} 波 · {difficultyLabel[wave.difficulty]}</Badge>)}</div></div><div className="flex flex-wrap gap-2"><a href={`/activities/${activity.id}/signup`} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white">去报名</a>{canManage ? <a href={`/activities/${activity.id}/schedule`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800">进入排表工作台</a> : null}</div></div></Card>)}{activities.length === 0 ? <Card className="p-8 text-center"><h2 className="text-lg font-bold">还没有活动</h2><p className="mt-2 text-sm text-slate-600">{canManage ? "创建第一个活动后，成员就可以选择角色报名。" : "请等待空间管理员创建活动。"}</p></Card> : null}</section></div>;
+  } catch (error) {
+    return <div className="mx-auto max-w-2xl rounded-2xl bg-amber-50 p-6 text-amber-900"><h1 className="text-xl font-bold">请先选择空间</h1><p className="mt-2 text-sm">{error instanceof CurrentSpaceError ? "活动需要在已选择且可访问的空间中查看。" : "暂时无法读取活动，请稍后刷新。"}</p><a className="mt-4 inline-block font-semibold text-cyan-800 underline" href="/spaces">前往空间页</a></div>;
+  }
 }
