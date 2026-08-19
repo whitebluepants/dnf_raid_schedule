@@ -9,6 +9,10 @@ export function useScheduleRealtime(raidEventId: string, onChange: () => void): 
   const [state, setState] = useState<RealtimeState>("connecting");
   useEffect(() => {
     const client = createBrowserClient();
+    if (!client) {
+      setState("offline");
+      return;
+    }
     const channel = client
       .channel(`raid-event:${raidEventId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "raid_waves" }, onChange)

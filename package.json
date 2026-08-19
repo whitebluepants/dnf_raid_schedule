@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "lint": "biome lint .",
+    "lint": "biome lint src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

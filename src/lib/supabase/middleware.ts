@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import type { Database } from "@/lib/database.types";
 import { publicEnvOrNull } from "@/lib/env";
+import { getRouteAccess } from "@/features/auth/route-access";
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   const config = publicEnvOrNull();
@@ -13,6 +14,14 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   // instead of crashing the Edge middleware on every request. Data-mutating
   // server actions still validate their required configuration with `env()`.
   if (!config) {
+    const access = getRouteAccess({
+      pathname: request.nextUrl.pathname,
+      search: request.nextUrl.search,
+      hasUser: false,
+    });
+    if (access.type === "redirect") {
+      return NextResponse.redirect(new URL(access.location, request.url));
+    }
     return response;
   }
 
@@ -37,6 +46,22 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     },
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const access = getRouteAccess({
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    hasUser: Boolean(user),
+  });
+
+  if (access.type === "redirect") {
+    const redirect = NextResponse.redirect(new URL(access.location, request.url));
+    for (const cookie of response.cookies.getAll()) {
+      redirect.cookies.set(cookie);
+    }
+    return redirect;
+  }
+
   return response;
 }

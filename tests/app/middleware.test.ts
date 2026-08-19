@@ -8,7 +8,7 @@ describe("request middleware", () => {
     vi.unstubAllEnvs();
   });
 
-  it("does not crash when Supabase public variables are not configured", async () => {
+  it("redirects an anonymous protected request when Supabase public variables are not configured", async () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
 
@@ -16,7 +16,8 @@ describe("request middleware", () => {
       new NextRequest("http://localhost/activities"),
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/login?next=%2Factivities");
   });
 
   it("also fails open for a partially configured integration", async () => {

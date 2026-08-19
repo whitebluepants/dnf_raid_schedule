@@ -12,6 +12,10 @@ const scheduleMigrationPath = resolve(
   process.cwd(),
   "supabase/migrations/202608190002_schedule_functions.sql",
 );
+const authSpacesMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/202608190003_auth_and_spaces.sql",
+);
 const seedPath = resolve(process.cwd(), "supabase/seed.sql");
 const containerName = `dnf-schema-test-${process.pid}-${randomUUID().slice(0, 8)}`;
 
@@ -204,6 +208,7 @@ integration("initial Supabase migration", () => {
     `);
     psql(readFileSync(migrationPath, "utf8"));
     psql(readFileSync(scheduleMigrationPath, "utf8"));
+    psql(readFileSync(authSpacesMigrationPath, "utf8"));
   }, 120_000);
 
   afterAll(() => {
@@ -232,6 +237,30 @@ integration("initial Supabase migration", () => {
       "team_color=red,yellow,green",
       "usage_state=reserved,completed",
     ]);
+  });
+
+  test("lets a signed-in profile create a space with a shareable invite code", () => {
+    const profileId = randomUUID();
+    const groupId = psql(
+      `
+        insert into auth.users (id) values ('${profileId}');
+        insert into public.profiles (id, display_name)
+        values ('${profileId}', '团长');
+        set role authenticated;
+        set request.jwt.claim.sub = '${profileId}';
+        select public.create_group('固定团', 'TEAM2026');
+      `,
+    );
+    const space = psql(
+      `
+        select groups.name || '|' || groups.invite_code || '|' || group_members.role
+        from public.groups
+        join public.group_members on group_members.group_id = groups.id
+        where groups.id = '${groupId}' and group_members.profile_id = '${profileId}';
+      `,
+    );
+
+    expect(space).toBe("固定团|TEAM2026|admin");
   });
 
   test("creates every persisted table and enables row level security", () => {

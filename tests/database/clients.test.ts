@@ -28,6 +28,8 @@ describe("createBrowserClient", () => {
     );
 
     const client = createBrowserClient();
+    expect(client).not.toBeNull();
+    if (!client) throw new Error("expected a configured browser client");
     await client.from("profiles").select("id");
 
     expect(requestedUrl).toBe("https://example.supabase.co/rest/v1/profiles?select=id");

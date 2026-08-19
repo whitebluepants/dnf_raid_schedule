@@ -32,9 +32,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase 项目的 anon public key>
 
 1. `supabase/migrations/202608190001_initial_schema.sql`
 2. `supabase/migrations/202608190002_schedule_functions.sql`
-3. `supabase/seed.sql`
+3. `supabase/migrations/202608190003_auth_and_spaces.sql`
+4. `supabase/seed.sql`
 
-执行后，在 Authentication 设置邮箱登录和站点 URL。Redirect URL 应包含 Vercel 的部署域名。
+本工具的界面只收集“昵称 + 密码”。Supabase 仍使用 Password 登录提供商，因此请在 Authentication 的 Email 设置中关闭 **Confirm email**；否则新成员注册后无法直接登录。站点 URL 和 Redirect URL 应包含 Vercel 的部署域名。
 
 ## Vercel
 
@@ -43,7 +44,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase 项目的 anon public key>
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-推荐的长期流程是：把本仓库推到 GitHub，在 Vercel 项目中导入该 GitHub 仓库。之后推送默认分支会自动生成生产部署，Pull Request 会生成 preview。
+推荐的长期流程是：在 Vercel 项目中打开 **Settings → Git → Connect Git Repository**，选择 `whitebluepants/dnf_raid_schedule`，并将 Production Branch 设为 `master`。之后推送默认分支会自动生成生产部署，Pull Request 会生成 preview。
 
 如果暂时不使用 GitHub，也可以通过 Vercel CLI 或当前 Codex Vercel 连接直接部署源码；这种方式适合预览，不如 Git 集成便于后续维护。
 
