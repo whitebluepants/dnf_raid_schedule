@@ -4,6 +4,7 @@ import {
   createRaidEvent,
   listActivities,
   listSignupCharacters,
+  syncEventWaves,
 } from "@/features/activities/repository";
 
 const ids = {
@@ -91,6 +92,22 @@ describe("activity repository", () => {
 
     expect(result).toEqual({ ok: false, error: "只有空间管理员可以创建活动" });
     expect(rpc).not.toHaveBeenCalled();
+  });
+
+  test("replaces an unscheduled event's wave plan through the protected RPC", async () => {
+    const { client, rpc } = activityClient();
+
+    await expect(syncEventWaves(
+      client as never,
+      { groupId: ids.group, profileId: ids.profile, role: "admin", isPlatformAdmin: false },
+      ids.event,
+      [{ order: 1, difficulty: "hard" }, { order: 2, difficulty: "normal" }],
+    )).resolves.toEqual({ ok: true, value: true });
+
+    expect(rpc).toHaveBeenCalledWith("sync_raid_event_waves", {
+      p_raid_event_id: ids.event,
+      p_waves: [{ order: 1, difficulty: "hard" }, { order: 2, difficulty: "normal" }],
+    });
   });
 
   test("limits signup characters to the active roster in the current space", async () => {

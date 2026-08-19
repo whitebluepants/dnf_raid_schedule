@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurrentSpace } from "@/lib/current-space";
 import type { Database } from "@/lib/database.types";
 import type { Result } from "@/lib/result";
-import type { DifficultyPresetInput, RaidEventInput } from "./schemas";
+import type { DifficultyPresetInput, RaidEventInput, WavePlanInput } from "./schemas";
 
 type Client = SupabaseClient<Database>;
 
@@ -108,6 +108,28 @@ export async function createRaidEvent(
   if (!error && data) return { ok: true, value: data };
   if (error?.message.includes("activity_forbidden")) return { ok: false, error: "只有空间管理员可以创建活动" };
   return { ok: false, error: "活动创建失败，请稍后重试" };
+}
+
+export async function syncEventWaves(
+  client: Client,
+  space: CurrentSpace,
+  eventId: string,
+  waves: WavePlanInput,
+): Promise<Result<true, string>> {
+  if (!canManageActivities(space)) return { ok: false, error: "只有空间管理员可以调整波次" };
+  const rpc = client.rpc.bind(client) as unknown as (
+    name: "sync_raid_event_waves",
+    args: { p_raid_event_id: string; p_waves: WavePlanInput },
+  ) => Promise<{ data: boolean | null; error: { message: string } | null }>;
+  const { data, error } = await rpc("sync_raid_event_waves", {
+    p_raid_event_id: eventId,
+    p_waves: [...waves].sort((left, right) => left.order - right.order),
+  });
+  if (!error && data) return { ok: true, value: true };
+  if (error?.message.includes("wave_plan_locked")) return { ok: false, error: "已有排表数据，不能再增减波次；请先清空排表。" };
+  if (error?.message.includes("activity_forbidden")) return { ok: false, error: "只有空间管理员可以调整波次" };
+  if (error?.message.includes("event_plan_locked")) return { ok: false, error: "已发布活动不能调整波次" };
+  return { ok: false, error: "波次调整失败，请稍后重试" };
 }
 
 export async function listActivities(client: Client, groupId: string): Promise<Result<Activity[], string>> {

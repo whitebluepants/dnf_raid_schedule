@@ -12,6 +12,14 @@ export const waveSchema = z.object({
   difficulty: difficultyCodeSchema,
 });
 
+export const wavePlanSchema = z.array(waveSchema).min(1, "至少保留一波").superRefine((waves, context) => {
+  waves.forEach((wave, index) => {
+    if (wave.order !== index + 1) {
+      context.addIssue({ code: "custom", message: "波次序号必须从 1 开始连续排列", path: [index, "order"] });
+    }
+  });
+});
+
 export const raidEventSchema = z
   .object({
     title: z.string().trim().min(1, "请输入活动名称").max(160, "活动名称不能超过 160 个字符"),
@@ -60,4 +68,5 @@ export const registrationSchema = z.object({
 });
 
 export type RaidEventInput = z.infer<typeof raidEventSchema>;
+export type WavePlanInput = z.infer<typeof wavePlanSchema>;
 export type DifficultyPresetInput = z.infer<typeof difficultyPresetSchema>;

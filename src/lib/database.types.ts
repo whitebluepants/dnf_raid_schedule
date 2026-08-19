@@ -342,6 +342,13 @@ export type Database = {
         };
         Returns: boolean;
       };
+      sync_raid_event_waves: {
+        Args: {
+          p_raid_event_id: string;
+          p_waves: Json;
+        };
+        Returns: boolean;
+      };
       replace_schedule_snapshot: {
         Args: {
           p_raid_event_id: string;

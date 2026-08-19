@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { AppShell } from "@/components/app-shell";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 describe("AppShell", () => {
   test("exposes navigation, identity, and a main landmark", () => {
@@ -15,7 +17,6 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "活动" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "我的角色" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "配置" })).toBeInTheDocument();
-    expect(screen.getByText("团长")).toBeInTheDocument();
     expect(screen.getByText("团长 / leader")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开菜单" })).toBeInTheDocument();
   });

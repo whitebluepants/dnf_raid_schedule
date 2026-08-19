@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { CurrentSpaceError, requireCurrentSpace } from "@/lib/current-space";
 import type { Result } from "@/lib/result";
 import { createServerClient } from "@/lib/supabase/server";
-import { createRaidEvent as persistRaidEvent, getActivity, updateDifficultyPreset as persistDifficultyPreset } from "./repository";
-import { difficultyPresetSchema, raidEventSchema, registrationSchema } from "./schemas";
+import { createRaidEvent as persistRaidEvent, getActivity, syncEventWaves as persistEventWaves, updateDifficultyPreset as persistDifficultyPreset } from "./repository";
+import { difficultyPresetSchema, raidEventSchema, registrationSchema, wavePlanSchema } from "./schemas";
 
 function fieldValue(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "");
@@ -27,6 +27,26 @@ export async function createRaidEvent(formData: FormData): Promise<Result<string
   } catch (error) {
     console.error("[createRaidEvent]", error);
     return { ok: false, error: error instanceof CurrentSpaceError ? "请先选择可访问的空间" : "活动创建失败" };
+  }
+}
+
+export async function syncEventWaves(eventId: string, input: unknown): Promise<Result<true, string>> {
+  const parsed = wavePlanSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "波次信息不正确" };
+  const client = await createServerClient();
+  try {
+    const space = await requireCurrentSpace(client);
+    const event = await getActivity(client, eventId, space.groupId);
+    if (!event.ok) return { ok: false, error: event.error };
+    if (!event.value) return { ok: false, error: "活动不存在、已归档或不属于当前空间" };
+    const result = await persistEventWaves(client, space, eventId, parsed.data);
+    if (result.ok) {
+      revalidatePath("/activities");
+      revalidatePath(`/activities/${eventId}/schedule`);
+    }
+    return result;
+  } catch (error) {
+    return { ok: false, error: error instanceof CurrentSpaceError ? "请先选择可访问的空间" : "波次调整失败" };
   }
 }
 

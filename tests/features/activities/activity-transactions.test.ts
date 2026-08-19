@@ -23,6 +23,7 @@ const migrations = [
   "202608190005_extensions_schema_compatibility.sql",
   "202608190006_platform_admin_and_active_space.sql",
   "202608190007_activity_transactions.sql",
+  "202608190013_event_wave_planning_and_difficulty_defaults.sql",
 ].map((name) => resolve(process.cwd(), "supabase/migrations", name));
 const containerName = `dnf-activities-${process.pid}-${randomUUID().slice(0, 8)}`;
 const integration = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0 ? describe : describe.skip;
@@ -97,5 +98,11 @@ integration("enforces active own current-space characters at registration bounda
     expect(psql(`select count(*) from public.raid_events where title = '无效波次';`)).toBe("0");
     const createdEvent = psql(`set role authenticated; set request.jwt.claim.sub = '${owner}'; select public.create_raid_event_with_waves('${group}', '事务活动', '2026-08-22 12:00:00+00', '2026-08-17', '[{"order":1,"difficulty":"normal"},{"order":2,"difficulty":"hard"}]'::jsonb);`);
     expect(psql(`select string_agg(wave_number || ':' || difficulty::text, ',' order by wave_number) from public.raid_waves where raid_event_id = '${createdEvent}';`)).toBe("1:normal,2:hard");
+  });
+
+  test("lets a manager revise an unscheduled event's wave plan and seeds editable difficulty templates", () => {
+    expect(psql(`set role authenticated; set request.jwt.claim.sub = '${owner}'; select public.sync_raid_event_waves('${event}', '[{"order":1,"difficulty":"hard"},{"order":2,"difficulty":"normal"},{"order":3,"difficulty":"normal"}]'::jsonb);`)).toBe("t");
+    expect(psql(`select string_agg(wave_number || ':' || difficulty::text, ',' order by wave_number) from public.raid_waves where raid_event_id = '${event}';`)).toBe("1:hard,2:normal,3:normal");
+    expect(psql("select string_agg(code || ':' || name, ',' order by code) from public.difficulty_presets where group_id is null;")).toBe("normal:普通,hard:困难,judgment:审判");
   });
 });
