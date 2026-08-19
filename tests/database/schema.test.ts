@@ -20,6 +20,10 @@ const spaceIsolationMigrationPath = resolve(
   process.cwd(),
   "supabase/migrations/202608190004_space_scoped_characters.sql",
 );
+const extensionsCompatibilityMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/202608190005_extensions_schema_compatibility.sql",
+);
 const seedPath = resolve(process.cwd(), "supabase/seed.sql");
 const containerName = `dnf-schema-test-${process.pid}-${randomUUID().slice(0, 8)}`;
 
@@ -205,6 +209,9 @@ integration("initial Supabase migration", () => {
       create role authenticated nologin;
       create role anon nologin;
       create schema auth;
+      create schema extensions;
+      create extension pgcrypto with schema extensions;
+      alter database postgres set search_path = public, extensions;
       create table auth.users (id uuid primary key);
       create function auth.uid() returns uuid
       language sql stable
@@ -214,6 +221,7 @@ integration("initial Supabase migration", () => {
     psql(readFileSync(scheduleMigrationPath, "utf8"));
     psql(readFileSync(authSpacesMigrationPath, "utf8"));
     psql(readFileSync(spaceIsolationMigrationPath, "utf8"));
+    psql(readFileSync(extensionsCompatibilityMigrationPath, "utf8"));
   }, 120_000);
 
   afterAll(() => {
