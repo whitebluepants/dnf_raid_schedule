@@ -88,7 +88,7 @@ export async function createRaidEvent(
     return { ok: false, error: "只有空间管理员可以创建活动" };
   }
 
-  const rpc = client.rpc as unknown as (
+  const rpc = client.rpc.bind(client) as unknown as (
     name: "create_raid_event_with_waves",
     args: {
       p_group_id: string;

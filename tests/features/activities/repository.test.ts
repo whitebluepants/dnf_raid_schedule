@@ -63,6 +63,22 @@ describe("activity repository", () => {
     });
   });
 
+  test("calls the client RPC with its instance binding intact", async () => {
+    const client = {
+      marker: "supabase-client",
+      rpc(this: { marker: string }, _name: string, _args: unknown) {
+        if (this.marker !== "supabase-client") throw new Error("lost rpc binding");
+        return Promise.resolve({ data: ids.event, error: null });
+      },
+    };
+
+    await expect(createRaidEvent(
+      client as never,
+      { groupId: ids.group, profileId: ids.profile, role: "admin", isPlatformAdmin: false },
+      { title: "周六攻坚", eventDate: "2026-08-22T12:00:00.000Z", gameWeek: "2026-W34", waves: [{ order: 1, difficulty: "hard" }] },
+    )).resolves.toEqual({ ok: true, value: ids.event });
+  });
+
   test("does not write an event for an ordinary member", async () => {
     const { client, rpc } = activityClient();
 
