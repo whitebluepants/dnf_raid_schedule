@@ -16,8 +16,8 @@ declare
   next_version integer;
   snapshot_row jsonb;
 begin
-  select wave, event.group_id, event.game_week
-    into wave_record, event_group_id, event_week
+  select wave
+    into wave_record
   from public.raid_waves wave
   join public.raid_events event on event.id = wave.raid_event_id
   where wave.id = p_raid_wave_id
@@ -27,6 +27,10 @@ begin
   if not found then
     raise exception 'wave_not_found';
   end if;
+  select event.group_id, event.game_week
+    into event_group_id, event_week
+  from public.raid_events event
+  where event.id = p_raid_event_id;
   if not public.has_group_role(event_group_id, array['leader', 'admin']::public.member_role[]) then
     raise exception 'schedule_forbidden';
   end if;

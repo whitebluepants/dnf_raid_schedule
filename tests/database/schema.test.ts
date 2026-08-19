@@ -8,6 +8,10 @@ const migrationPath = resolve(
   process.cwd(),
   "supabase/migrations/202608190001_initial_schema.sql",
 );
+const scheduleMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/202608190002_schedule_functions.sql",
+);
 const seedPath = resolve(process.cwd(), "supabase/seed.sql");
 const containerName = `dnf-schema-test-${process.pid}-${randomUUID().slice(0, 8)}`;
 
@@ -124,6 +128,16 @@ test("migration source contains the complete persistence contract", () => {
   }
 });
 
+test("schedule migration source contains authenticated transactional boundaries", () => {
+  const migration = readFileSync(scheduleMigrationPath, "utf8");
+  expect(migration).toMatch(/create or replace function public\.replace_schedule_snapshot/);
+  expect(migration).toMatch(/schedule_version_conflict/);
+  expect(migration).toMatch(/character_weekly_conflict/);
+  expect(migration).toMatch(/create or replace function public\.create_group/);
+  expect(migration).toMatch(/create or replace function public\.join_group_by_invite/);
+  expect(migration).toMatch(/grant execute on function public\.replace_schedule_snapshot/);
+});
+
 integration("initial Supabase migration", () => {
   beforeAll(() => {
     execFileSync(
@@ -188,6 +202,7 @@ integration("initial Supabase migration", () => {
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     `);
     psql(readFileSync(migrationPath, "utf8"));
+    psql(readFileSync(scheduleMigrationPath, "utf8"));
   }, 120_000);
 
   afterAll(() => {
