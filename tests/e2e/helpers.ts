@@ -44,7 +44,7 @@ export async function registerAccount(browser: Browser, identity: E2EIdentity) {
   await page.getByLabel("昵称").fill(identity.nickname);
   await page.getByLabel("密码").fill(identity.password);
   await page.getByRole("button", { name: "注册", exact: true }).click();
-  await expect(page).toHaveURL(/\/spaces$/);
+  await expect(page).toHaveURL(/\/spaces$/, { timeout: 20_000 });
   await context.close();
 }
 
@@ -99,7 +99,7 @@ export async function addCharacter(
   const dialog = page.getByRole("dialog", { name: "新增角色" });
   await dialog.getByLabel("新账号名").fill(character.account);
   await dialog.getByRole("button", { name: "添加账号", exact: true }).click();
-  await expect(dialog.getByText("账号已添加，可以继续填写角色资料。")).toBeVisible();
+  await expect(page.getByText("账号已添加，可以继续填写角色资料。")).toBeVisible();
   await dialog.getByLabel("角色名").fill(character.name);
   await dialog.getByLabel("职业").fill(character.role === "buffer" ? "圣职者" : "剑魂");
   await dialog.getByLabel("定位").selectOption(character.role);

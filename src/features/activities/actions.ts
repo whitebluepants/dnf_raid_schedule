@@ -25,6 +25,7 @@ export async function createRaidEvent(formData: FormData): Promise<Result<string
     if (result.ok) revalidatePath("/activities");
     return result;
   } catch (error) {
+    console.error("[createRaidEvent]", error);
     return { ok: false, error: error instanceof CurrentSpaceError ? "请先选择可访问的空间" : "活动创建失败" };
   }
 }

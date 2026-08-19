@@ -10,6 +10,9 @@ export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
   fullyParallel: false,
+  // Registration hits the same remote Auth project. Keep opt-in smoke runs
+  // serial so provider latency or rate limits cannot turn into false failures.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
