@@ -314,6 +314,17 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      create_group: { Args: { p_name: string; p_invite_code: string }; Returns: string };
+      join_group_by_invite: { Args: { p_invite_code: string; p_nickname: string }; Returns: string };
+      replace_schedule_snapshot: {
+        Args: {
+          p_raid_event_id: string;
+          p_raid_wave_id: string;
+          p_expected_version: number;
+          p_snapshot: Json;
+        };
+        Returns: number;
+      };
       current_profile_id: { Args: Record<PropertyKey, never>; Returns: string };
       is_group_member: { Args: { target_group_id: string }; Returns: boolean };
       has_group_role: {
