@@ -32,6 +32,7 @@ export interface LockedAssignment {
 
 export interface WaveInput {
   id: string;
+  waveNumber?: number;
   difficulty: DifficultyCode;
   lockedAssignments?: LockedAssignment[];
 }

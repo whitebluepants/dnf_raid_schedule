@@ -1,6 +1,5 @@
 import { recommendCandidates } from "./candidates";
 import { compareCandidates, scoreCandidate } from "./score";
-import { characterMatchesPreset } from "./validate-schedule";
 import type {
   CandidateCharacter,
   GenerateScheduleInput,
@@ -36,41 +35,40 @@ export function generateSchedule(input: GenerateScheduleInput): GeneratedSchedul
   const available = input.characters.filter((character) => !usedWeekly.has(character.id));
   const reserved = new Set<string>();
   const waves: ScheduledWave[] = [];
-  const sortedWaves = [...input.waves].sort((a, b) => difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty] || a.id.localeCompare(b.id));
+  const sortedWaves = [...input.waves].sort((a, b) => difficultyOrder[a.difficulty] - difficultyOrder[b.difficulty] || (a.waveNumber ?? Number.MAX_SAFE_INTEGER) - (b.waveNumber ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
 
   for (const waveInput of sortedWaves) {
     const teams = { red: emptyTeam("red"), yellow: emptyTeam("yellow"), green: emptyTeam("green") } as Record<TeamColor, ScheduledTeam>;
     const gaps: ScheduleGap[] = [];
     const locked = new Map<string, CandidateCharacter>();
+    const waveAccounts = new Set<string>();
     for (const assignment of waveInput.lockedAssignments ?? []) {
       const team = teams[assignment.team];
       const slot = team.slots[assignment.slotIndex - 1];
       if (!slot) continue;
       const found = input.characters.find((character) => character.id === assignment.characterId);
-      const character = found ?? {
-        id: assignment.characterId,
-        accountId: `locked-${assignment.characterId}`,
-        profileId: "unknown",
-        role: slot.role,
-        fame: 0,
-        strengthTier: "low" as const,
-        damageScore: null,
-        buffScore: null,
-      };
-      slot.character = character;
       slot.locked = true;
-      locked.set(character.id, character);
-      reserved.add(character.id);
+      if (!found || usedWeekly.has(found.id) || reserved.has(found.id) || found.role !== slot.role || waveAccounts.has(found.accountId)) {
+        gaps.push({ role: slot.role, team: assignment.team, slotIndex: assignment.slotIndex, reason: "锁定项无效：角色不存在、已使用、重复或类型不匹配" });
+        continue;
+      }
+      slot.character = found;
+      waveAccounts.add(found.accountId);
+      locked.set(found.id, found);
+      reserved.add(found.id);
     }
 
     const eligible = available.filter((character) => !reserved.has(character.id));
-    const preset = input.difficultyPresets?.[waveInput.difficulty];
     const buffers = rank(eligible, "buffer").filter((character) => !locked.has(character.id));
     const dealers = rank(eligible, "dealer").filter((character) => !locked.has(character.id));
-    const waveAccounts = new Set(Object.values(teams).flatMap((team) => team.slots.flatMap((slot) => (slot.character ? [slot.character.accountId] : []))));
+    const dealerAccounts = new Set(dealers.map((character) => character.accountId));
+    buffers.sort((left, right) =>
+      Number(dealerAccounts.has(left.accountId)) - Number(dealerAccounts.has(right.accountId)) ||
+      compareCandidates(scoreCandidate(left), scoreCandidate(right)),
+    );
 
     const take = (pool: CandidateCharacter[], slot: ScheduledSlot): boolean => {
-      const index = pool.findIndex((character) => !waveAccounts.has(character.accountId) && characterMatchesPreset(character, preset));
+      const index = pool.findIndex((character) => !waveAccounts.has(character.accountId));
       if (index < 0) return false;
       const [character] = pool.splice(index, 1);
       slot.character = character;

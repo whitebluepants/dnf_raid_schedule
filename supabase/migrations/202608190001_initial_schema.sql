@@ -388,9 +388,6 @@ with check (id = public.current_profile_id());
 create policy groups_select_members on public.groups
 for select to authenticated
 using (public.is_group_member(id));
-create policy groups_admin_insert on public.groups
-for insert to authenticated
-with check (created_by = public.current_profile_id());
 create policy groups_admin_update on public.groups
 for update to authenticated
 using (public.has_group_role(id, array['admin']::public.member_role[]))

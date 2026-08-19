@@ -69,7 +69,7 @@ describe("generateSchedule", () => {
     const locked = generated.waves[0].teams.red.slots[0];
 
     expect(locked.locked).toBe(true);
-    expect(locked.character?.id).toBe("missing-buffer");
+    expect(locked.character).toBeNull();
     expect(generated.waves[0].gaps).toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "buffer" })]),
     );

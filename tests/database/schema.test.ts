@@ -94,8 +94,34 @@ test("keeps schedule writes behind the future transactional boundary", () => {
   expect(migration).toMatch(
     /constraint schedule_revisions_wave_event_fk[\s\S]*foreign key \(raid_wave_id, raid_event_id\)/,
   );
-  expect(migration).toMatch(/create policy groups_admin_insert/);
+  expect(migration).not.toMatch(/create policy groups_admin_insert/);
   expect(migration).not.toMatch(/create policy groups_admin_manage/);
+});
+
+test("migration source contains the complete persistence contract", () => {
+  const migration = readFileSync(migrationPath, "utf8");
+  for (const declaration of [
+    "create type public.member_role",
+    "create type public.character_role",
+    "create type public.difficulty_code",
+    "create table public.profiles",
+    "create table public.groups",
+    "create table public.group_members",
+    "create table public.game_accounts",
+    "create table public.characters",
+    "create table public.raid_events",
+    "create table public.raid_waves",
+    "create table public.event_registrations",
+    "create table public.event_character_registrations",
+    "create table public.schedule_slots",
+    "create table public.character_weekly_usage",
+    "create table public.schedule_revisions",
+    "alter table public.profiles enable row level security",
+    "alter table public.schedule_slots enable row level security",
+    "grant select, insert, update, delete on all tables in schema public to authenticated",
+  ]) {
+    expect(migration.toLowerCase()).toContain(declaration);
+  }
 });
 
 integration("initial Supabase migration", () => {
@@ -322,7 +348,6 @@ integration("initial Supabase migration", () => {
       "characters|INSERT|characters_owner_insert",
       "characters|UPDATE|characters_owner_update",
       "groups|SELECT|groups_select_members",
-      "groups|INSERT|groups_admin_insert",
       "groups|UPDATE|groups_admin_update",
       "group_members|SELECT|group_members_select_members",
       "group_members|ALL|group_members_admin_manage",
