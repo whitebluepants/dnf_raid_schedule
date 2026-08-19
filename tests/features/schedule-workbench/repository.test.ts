@@ -2,8 +2,10 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   getScheduleWorkbench,
+  publishSchedule,
   replaceEventScheduleSnapshots,
   replaceScheduleSnapshot,
+  setMemberAttendance,
 } from "@/features/schedule-workbench/repository";
 
 const ids = {
@@ -156,5 +158,20 @@ describe("schedule workbench repository", () => {
       p_expected_versions: { [ids.wave]: 2 },
       p_snapshots: { [ids.wave]: [] },
     });
+  });
+
+  test("preserves the Supabase client binding for every schedule mutation RPC", async () => {
+    const client = {
+      marker: "supabase-client",
+      rpc(this: { marker: string }, _name: string, _args: unknown) {
+        if (this.marker !== "supabase-client") throw new Error("lost rpc binding");
+        return Promise.resolve({ data: true, error: null });
+      },
+    };
+
+    await expect(replaceScheduleSnapshot(client as never, { raidEventId: ids.event, raidWaveId: ids.wave, expectedVersion: 1, snapshot: [] })).resolves.toMatchObject({ status: "success" });
+    await expect(replaceEventScheduleSnapshots(client as never, { raidEventId: ids.event, expectedVersions: { [ids.wave]: 1 }, snapshots: { [ids.wave]: [] } })).resolves.toMatchObject({ status: "success" });
+    await expect(setMemberAttendance(client as never, { raidEventId: ids.event, profileId: ids.profile, state: "participating" })).resolves.toMatchObject({ status: "success" });
+    await expect(publishSchedule(client as never, { raidEventId: ids.event, versions: { [ids.wave]: 1 } })).resolves.toMatchObject({ status: "success" });
   });
 });

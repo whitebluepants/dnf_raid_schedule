@@ -121,7 +121,7 @@ export async function addCharacterToExistingAccount(
 ) {
   await page.getByRole("button", { name: "新增角色", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新增角色" });
-  await dialog.getByLabel("账号").selectOption({ label: character.account });
+  await dialog.getByRole("combobox", { name: "账号", exact: true }).selectOption({ label: character.account });
   await dialog.getByLabel("角色名").fill(character.name);
   await dialog.getByLabel("职业").fill(character.role === "buffer" ? "圣职者" : "剑魂");
   await dialog.getByLabel("定位").selectOption(character.role);
