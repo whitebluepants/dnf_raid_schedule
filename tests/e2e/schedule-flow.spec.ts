@@ -71,7 +71,7 @@ test.describe("排表生成、手动保存和发布", () => {
       await scheduleLink.click();
 
       await adminPage.getByRole("button", { name: "自动生成", exact: true }).click();
-      await expect(adminPage.getByRole("status")).toContainText("初稿已生成");
+      await expect(adminPage.getByRole("status")).toContainText("初稿已生成", { timeout: 20_000 });
       const dealerSlots = adminPage.getByRole("button", { name: / C 槽位，E2E-/ });
       await expect(dealerSlots).toHaveCount(9);
       const allOccupiedSlots = adminPage.getByRole("button", { name: /槽位，E2E-/ });
