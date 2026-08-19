@@ -2,11 +2,20 @@ import { createServerClient as createSupabaseServerClient } from "@supabase/ssr"
 import { type NextRequest, NextResponse } from "next/server";
 
 import type { Database } from "@/lib/database.types";
-import { env } from "@/lib/env";
+import { publicEnvOrNull } from "@/lib/env";
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
-  const config = env();
+  const config = publicEnvOrNull();
   let response = NextResponse.next({ request });
+
+  // Supabase is an optional integration for the initial shell. If Vercel has
+  // not received the public variables yet, allow static/public routes to load
+  // instead of crashing the Edge middleware on every request. Data-mutating
+  // server actions still validate their required configuration with `env()`.
+  if (!config) {
+    return response;
+  }
+
   const supabase = createSupabaseServerClient<Database>(
     config.NEXT_PUBLIC_SUPABASE_URL,
     config.NEXT_PUBLIC_SUPABASE_ANON_KEY,
