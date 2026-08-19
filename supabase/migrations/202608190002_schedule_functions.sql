@@ -37,6 +37,12 @@ begin
   if wave_record.status = 'archived' then
     raise exception 'event_archived';
   end if;
+  if exists (
+    select 1 from public.raid_events event
+    where event.id = p_raid_event_id and event.status = 'archived'
+  ) then
+    raise exception 'event_archived';
+  end if;
   if wave_record.version <> p_expected_version then
     raise exception 'schedule_version_conflict';
   end if;
@@ -81,9 +87,13 @@ begin
     where row.character_id is not null
       and not exists (
         select 1 from public.event_character_registrations registration
+        join public.event_registrations event_registration
+          on event_registration.raid_event_id = registration.raid_event_id
+         and event_registration.profile_id = registration.profile_id
         where registration.raid_event_id = p_raid_event_id
           and registration.character_id = row.character_id
           and registration.profile_id = row.profile_id
+          and event_registration.state = 'participating'
       )
   ) then
     raise exception 'character_not_registered';
@@ -221,3 +231,42 @@ revoke all on function public.create_group(text, text) from public;
 revoke all on function public.join_group_by_invite(text, text) from public;
 grant execute on function public.create_group(text, text) to authenticated;
 grant execute on function public.join_group_by_invite(text, text) to authenticated;
+
+create or replace function public.replace_event_registration(
+  p_raid_event_id uuid,
+  p_state public.registration_state,
+  p_character_ids uuid[]
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  owner_id uuid := public.current_profile_id();
+  event_group_id uuid;
+begin
+  select group_id into event_group_id from public.raid_events where id = p_raid_event_id and status <> 'archived';
+  if event_group_id is null or not public.is_group_member(event_group_id) then raise exception 'registration_forbidden'; end if;
+  insert into public.event_registrations (raid_event_id, profile_id, state)
+  values (p_raid_event_id, owner_id, p_state)
+  on conflict (raid_event_id, profile_id) do update set state = excluded.state;
+  delete from public.event_character_registrations
+  where raid_event_id = p_raid_event_id and profile_id = owner_id;
+  if p_state = 'participating' and coalesce(array_length(p_character_ids, 1), 0) > 0 then
+    if exists (
+      select 1 from unnest(p_character_ids) character_id
+      where not exists (
+        select 1 from public.characters character
+        where character.id = character_id and character.profile_id = owner_id and not character.is_archived
+      )
+    ) then raise exception 'character_forbidden'; end if;
+    insert into public.event_character_registrations (raid_event_id, profile_id, character_id)
+    select p_raid_event_id, owner_id, character_id from unnest(p_character_ids) character_id;
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.replace_event_registration(uuid, public.registration_state, uuid[]) from public;
+grant execute on function public.replace_event_registration(uuid, public.registration_state, uuid[]) to authenticated;

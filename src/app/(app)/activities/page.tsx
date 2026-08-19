@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { generateSchedule } from "@/features/scheduling/generate-schedule";
 import type { CandidateCharacter } from "@/features/scheduling/types";
+import { ScheduleRealtimeIndicator } from "@/features/schedule-workbench/realtime-indicator";
 
 const demoCharacters: CandidateCharacter[] = [
   ...Array.from({ length: 4 }, (_, index) => ({
@@ -46,7 +47,7 @@ export default function ActivitiesPage() {
         <div>
           <p className="text-sm font-semibold text-cyan-700">2026-08-22 · 米歇尔攻坚</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">本周开团排表</h1>
-          <p className="mt-2 text-sm text-slate-600">当前是演示草稿，团长可以在生成后拖拽调整、锁定和发布。</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3"><p className="text-sm text-slate-600">当前是演示草稿，团长可以在生成后拖拽调整、锁定和发布。</p><ScheduleRealtimeIndicator raidEventId="00000000-0000-0000-0000-000000000401" /></div>
         </div>
         <div className="flex gap-2"><Button className="bg-slate-900 text-white hover:bg-slate-700">重新生成</Button><Button className="bg-cyan-600 text-white hover:bg-cyan-500">发布排表</Button></div>
       </section>

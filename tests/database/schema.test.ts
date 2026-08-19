@@ -136,6 +136,7 @@ test("schedule migration source contains authenticated transactional boundaries"
   expect(migration).toMatch(/create or replace function public\.create_group/);
   expect(migration).toMatch(/create or replace function public\.join_group_by_invite/);
   expect(migration).toMatch(/grant execute on function public\.replace_schedule_snapshot/);
+  expect(migration).toMatch(/create or replace function public\.replace_event_registration/);
 });
 
 integration("initial Supabase migration", () => {

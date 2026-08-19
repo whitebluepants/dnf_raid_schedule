@@ -47,6 +47,6 @@ export async function createCharacter(formData: FormData): Promise<Result<string
 
 export async function archiveCharacter(characterId: string): Promise<Result<true, string>> {
   const client = await createServerClient();
-  const { error } = await client.from("characters").update({ is_archived: true }).eq("id", characterId);
-  return error ? { ok: false, error: "角色归档失败" } : { ok: true, value: true };
+  const { data, error } = await client.from("characters").update({ is_archived: true }).eq("id", characterId).select("id").maybeSingle();
+  return error || !data ? { ok: false, error: "角色归档失败或角色不存在" } : { ok: true, value: true };
 }
