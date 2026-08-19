@@ -351,6 +351,29 @@ export type Database = {
         };
         Returns: number;
       };
+      replace_event_schedule_snapshots: {
+        Args: {
+          p_raid_event_id: string;
+          p_expected_versions: Json;
+          p_snapshots: Json;
+        };
+        Returns: Json;
+      };
+      set_schedule_member_attendance: {
+        Args: {
+          p_raid_event_id: string;
+          p_profile_id: string;
+          p_state: Database["public"]["Enums"]["registration_state"];
+        };
+        Returns: boolean;
+      };
+      publish_schedule: {
+        Args: {
+          p_raid_event_id: string;
+          p_expected_versions: Json;
+        };
+        Returns: boolean;
+      };
       current_profile_id: { Args: Record<PropertyKey, never>; Returns: string };
       is_platform_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_group_member: { Args: { target_group_id: string }; Returns: boolean };
