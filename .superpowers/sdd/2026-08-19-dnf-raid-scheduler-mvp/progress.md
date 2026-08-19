@@ -1,0 +1,63 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-08-19-dnf-raid-scheduler-mvp.md
+
+Worktree: `/Users/whitebluepants/Documents/dnf_schedule/.worktrees/dnf-scheduler-mvp`
+Branch start: `86d7139`
+Spec reachable: `docs/superpowers/specs/2026-08-19-dnf-raid-scheduler-design.md`
+
+## Preflight self-consistency scan
+
+| Task | Internal check | Finding / ruling |
+|---|---|---|
+| 1 | Test, files, scripts, and foundation interface agree | Clean. Health behavior is observable and precedes implementation. |
+| 2 | Migration, clients, types, and tests agree | Ruling: execute migrations against local Supabase for behavior checks when possible; source-text assertions may cover security declarations only when the local harness cannot expose catalog state. Cost if wrong: migration defects could escape until integration testing. |
+| 3 | Domain types, scoring, validation, generation, and candidate APIs agree | Clean. Pure module has no Supabase/React dependency. |
+| 4 | UI primitive files and accessibility tests agree | Clean. |
+| 5 | Auth schemas/actions/pages agree | Clean. |
+| 6 | Roster schemas/repository/actions/UI agree | Clean. |
+| 7 | Activities, waves, registration, and difficulty permissions agree | Ruling: role authorization belongs in repository/RLS tests, not Zod schema tests. Cost if wrong: schema-only tests could falsely imply authorization. |
+| 8 | SQL functions, repository, and concurrency requirements agree | Ruling: replace planned RPC `generate_schedule_snapshot` with `replace_schedule_snapshot`; TypeScript Task 3 owns generation and SQL only validates/persists a proposed snapshot atomically. Cost if wrong: SQL and TypeScript algorithms could diverge. |
+| 9 | Workbench commands, realtime, mobile, absence, and publish requirements agree | Clean, subject to Task 8 RPC rename ruling. |
+| 10 | E2E, docs, secret checks, and deployment agree | Clean. Online migration/deployment is an external side effect and requires a user-visible confirmation at execution time. |
+
+## Cross-task interface and file scan
+
+| Producer / consumer | Shared file or interface | Finding / ruling |
+|---|---|---|
+| 1 -> 2 | package scripts, TypeScript alias, `env`, `Result` | Clean. |
+| 1 -> 3 | Vitest and TypeScript harness | Clean. |
+| 1 -> 4 | React/Tailwind/test harness | Clean. |
+| 1 -> 5 | `Result`, environment, App Router | Clean. |
+| 1 -> 6 | `Result`, test harness | Clean. |
+| 1 -> 7 | `Result`, test harness | Clean. |
+| 1 -> 8 | `Result`, test harness | Clean. |
+| 1 -> 9 | component/test harness | Clean. |
+| 1 <-> 10 | `.env.example` created then modified | Intentional sequential modification; Task 10 preserves secret warnings. |
+| 2 -> 5 | Supabase server client, auth/profile/group schema | Clean. |
+| 2 -> 6 | Supabase client and roster tables/types | Clean. |
+| 2 -> 7 | activity, difficulty, and registration tables/types | Clean. |
+| 2 -> 8 | schedule tables, weekly usage, RLS helpers | Clean. |
+| 2 -> 9 | browser client and Realtime tables | Clean. |
+| 2 <-> 8 | separate migration files in one directory | Clean; timestamp order is explicit. |
+| 3 -> 8 | generated snapshot and validation shapes | Apply RPC rename ruling; repository accepts Task 3 output. |
+| 3 -> 9 | generator, validator, candidate recommendations | Clean. |
+| 4 -> 5 | form primitives | Clean. |
+| 4 -> 6 | form/card/dialog primitives | Clean. |
+| 4 -> 7 | form/card/select primitives | Clean. |
+| 4 -> 9 | cards, badges, dialogs, app layout | Clean. |
+| 5 -> 6 | authenticated profile/group context | Clean. |
+| 5 -> 7 | authenticated profile/group role | Clean. |
+| 5 -> 8 | leader/admin identity | Clean. |
+| 6 -> 7 | owned characters available for registration | Clean. |
+| 6 -> 9 | display data for candidate cards | Clean. |
+| 7 -> 8 | events, waves, registrations, difficulty thresholds | Clean. |
+| 7 -> 9 | event and signup page routes | Separate page files; clean. |
+| 8 -> 9 | schedule mutation actions and optimistic versions | Apply RPC rename ruling; clean otherwise. |
+| 1-9 -> 10 | full app and testable workflows | Clean. |
+
+Ruling: the user explicitly changed execution preference to main-agent implementation with subagent review. Keep one implementation stream in this shared worktree; use subagents for bounded review and record findings before fixing them.
+
+Task 1: fix round 1/5 (3 addressed, 0 open — env secret ignore, real lint coverage, Node 24 warning-free verification; commits 227cee8..76360b9)
+Task 1: minor (deferred): unused ESLint configuration/dependencies remain while Biome owns the lint script.
+Task 1: complete (commits 86d7139..76360b9, review clean)
+Task 2: review found critical write-boundary gaps (direct schedule writes, hard deletes, cross-group target identities, and independent wave/event audit linkage). Root fixed them in 4519134: schedule and revision writes are reserved for the future transactional RPC, owner/group/event policies are insert/update-only where appropriate, dependent deletes are restricted, leader target checks require event-group membership, and revision wave/event linkage is composite. Schema integration and contract tests pass locally (16 total).
+Task 2: complete pending combined re-review (commits 10076ed..4519134)
