@@ -57,7 +57,11 @@ export async function setMemberAttendance(raidEventId: string, state: "participa
     const event = await getActivity(client, parsed.data.raidEventId, space.groupId);
     if (!event.ok) return { ok: false, error: event.error };
     if (!event.value) return { ok: false, error: "活动不存在、已归档或不属于当前空间" };
-    const { data, error } = await client.from("event_registrations").update({ state: parsed.data.state }).eq("raid_event_id", parsed.data.raidEventId).eq("profile_id", space.profileId).select("id").maybeSingle();
+    const { data, error } = await client.rpc("set_schedule_member_attendance", {
+      p_raid_event_id: parsed.data.raidEventId,
+      p_profile_id: space.profileId,
+      p_state: parsed.data.state,
+    });
     if (error || !data) return { ok: false, error: "请先完成报名后再修改出勤状态" };
     revalidatePath(`/activities/${parsed.data.raidEventId}/signup`);
     return { ok: true, value: true };

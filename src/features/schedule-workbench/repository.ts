@@ -43,6 +43,11 @@ export type ScheduleWorkbenchData = {
   weeklyUsedCharacterIds: string[];
   difficultyPresets: Partial<Record<DifficultyCode, DifficultyPreset>>;
   ownAttendance: Database["public"]["Enums"]["registration_state"] | null;
+  attendanceMembers: Array<{
+    profileId: string;
+    displayName: string;
+    state: Database["public"]["Enums"]["registration_state"];
+  }>;
   canManage: boolean;
 };
 
@@ -165,7 +170,10 @@ export async function getScheduleWorkbench(
   throwQueryError(charactersError, "读取角色失败");
 
   const accountIds = [...new Set((characterRows ?? []).map((character) => character.game_account_id))];
-  const profileIds = [...new Set((characterRows ?? []).map((character) => character.profile_id))];
+  const profileIds = [...new Set([
+    ...(characterRows ?? []).map((character) => character.profile_id),
+    ...(registrationsResult.data ?? []).map((registration) => registration.profile_id),
+  ])];
   const [{ data: accounts, error: accountsError }, { data: profiles, error: profilesError }] = await Promise.all([
     accountIds.length
       ? client.from("game_accounts").select("id, group_id, name").eq("group_id", space.groupId).in("id", accountIds)
@@ -223,6 +231,13 @@ export async function getScheduleWorkbench(
     }
   }
   const ownAttendance = (registrationsResult.data ?? []).find((registration) => registration.profile_id === space.profileId)?.state ?? null;
+  const attendanceMembers = (registrationsResult.data ?? [])
+    .map((registration) => ({
+      profileId: registration.profile_id,
+      displayName: memberNames.get(registration.profile_id) ?? "未知成员",
+      state: registration.state,
+    }))
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "zh-CN"));
   return {
     event: { id: event.id, title: event.title, gameWeek: event.game_week, eventDate: event.event_date, status: event.status },
     waves,
@@ -230,6 +245,7 @@ export async function getScheduleWorkbench(
     weeklyUsedCharacterIds: (usageResult.data ?? []).map((usage) => usage.character_id),
     difficultyPresets,
     ownAttendance,
+    attendanceMembers,
     canManage,
   };
 }
@@ -238,6 +254,7 @@ function mutationError(error: { message: string } | null): ScheduleMutationResul
   const message = error?.message ?? "unknown";
   if (message.includes("schedule_version_conflict")) return { status: "conflict", message: "排表已被其他人更新，请刷新后重试" };
   if (message.includes("schedule_forbidden") || message.includes("attendance_forbidden")) return { status: "forbidden", message: "你没有权限执行这个操作" };
+  if (message.includes("schedule_closed") || message.includes("registration_closed")) return { status: "validation_error", message: "活动或波次已结束，不能再修改" };
   if (/duplicate|weekly_conflict|not_registered|registration_invalid|invalid_|schedule_incomplete|schedule_role_mismatch/.test(message)) {
     return { status: "validation_error", message: "排表不满足发布或保存条件，请检查空槽、报名、账号与周次数冲突" };
   }

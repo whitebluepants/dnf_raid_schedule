@@ -39,7 +39,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase 项目的 anon public key>
 7. `supabase/migrations/202608190007_activity_transactions.sql`
 8. `supabase/migrations/202608190008_schedule_workbench_functions.sql`
 9. `supabase/migrations/202608190009_registration_schedule_integrity.sql`
-10. （仅本地演示数据需要时）`supabase/seed.sql`
+10. `supabase/migrations/202608190010_schedule_security_and_terminal_guards.sql`
+11. `supabase/migrations/202608190011_roster_schedule_integrity.sql`
+12. （仅本地演示数据需要时）`supabase/seed.sql`
 
 使用 Supabase CLI 时，可在已链接的项目中执行 `supabase db push`；本地重置可执行 `supabase start` 后执行 `supabase db reset`。执行前先核对目标项目，生产数据库必须先备份，再由具备变更授权的人运行迁移。
 
@@ -84,12 +86,12 @@ E2E_BASE_URL=http://127.0.0.1:3000 E2E_RUN_ID=local-20260819 npm run test:e2e
 
 ### 发布前人工清单与恢复边界
 
-1. 对目标 Supabase 项目做备份，按 001–009 顺序应用迁移，并确认「蓝」已通过正常注册取得平台管理员初始化资格。
+1. 对目标 Supabase 项目做备份，按 001–011 顺序应用迁移，并确认「蓝」已通过正常注册取得平台管理员初始化资格。
 2. 在 Vercel 配置 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_ANON_KEY`（均按 Production / Preview / Development 实际环境设置）；不得配置或暴露 `SUPABASE_SERVICE_ROLE_KEY` 给浏览器。
 3. 配置 Supabase Auth 的 Site URL、Redirect URLs、Password 登录和 Realtime，再部署并检查 `/api/health`。
 4. 使用两个非生产账号人工验证：登录、创建/选择空间、角色维护、管理员创建多波活动、成员报名、生成初稿、点击候补与槽位手动调整、保存、发布，以及另一成员刷新后看到发布结果。
 5. 发布异常时先回滚到 Vercel 的上一个已验证部署；数据库迁移不可简单倒退，按受控的新迁移或从已验证备份恢复，并记录对应的部署与迁移版本。
 
-生产冒烟测试只能由获授权人员执行，前置条件是：已确认目标 Vercel 部署 URL 和 Supabase 项目、001–009 已在该目标完整应用、已提供两个可使用的非生产测试账号，以及获准在该环境创建和清理 E2E 数据。当前仓库不携带这些授权或凭据，不能把本地 E2E 结果当作生产冒烟结果。
+生产冒烟测试只能由获授权人员执行，前置条件是：已确认目标 Vercel 部署 URL 和 Supabase 项目、001–011 已在该目标完整应用、已提供两个可使用的非生产测试账号，以及获准在该环境创建和清理 E2E 数据。当前仓库不携带这些授权或凭据，不能把本地 E2E 结果当作生产冒烟结果。
 
 Next.js 当前仍会提示 middleware 迁移到 proxy 的 deprecation warning；不影响构建和部署，后续可单独升级处理。

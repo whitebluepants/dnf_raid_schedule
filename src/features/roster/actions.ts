@@ -11,6 +11,18 @@ function currentSpaceError(): Result<never, string> {
   return { ok: false, error: "当前空间已失效，请重新选择" };
 }
 
+function characterWriteError(message: string, fallback: string): string {
+  return message.includes("scheduled_character_locked")
+    ? "角色已在进行中的活动排表中，无法归档或变更定位/账号"
+    : fallback;
+}
+
+function accountWriteError(message: string, fallback: string): string {
+  return message.includes("scheduled_account_locked")
+    ? "账号中的角色已在进行中的活动排表中，无法归档或变更账号归属"
+    : fallback;
+}
+
 export async function createGameAccount(formData: FormData): Promise<Result<string, string>> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name || name.length > 80) return { ok: false, error: "请输入有效的账号名" };
@@ -91,7 +103,7 @@ export async function saveCharacter(input: SaveCharacterInput): Promise<Result<s
     : client.from("characters").insert(payload);
   const { data, error } = await query.select("id").maybeSingle();
   return error || !data
-    ? { ok: false, error: characterId ? "角色更新失败或角色不存在" : "角色保存失败，请确认账号属于自己" }
+    ? { ok: false, error: characterWriteError(error?.message ?? "", characterId ? "角色更新失败或角色不存在" : "角色保存失败，请确认账号属于自己") }
     : { ok: true, value: data.id };
 }
 
@@ -127,5 +139,26 @@ export async function archiveCharacter(characterId: string): Promise<Result<true
     .eq("group_id", space.groupId)
     .select("id")
     .maybeSingle();
-  return error || !data ? { ok: false, error: "角色归档失败或角色不存在" } : { ok: true, value: true };
+  return error || !data ? { ok: false, error: characterWriteError(error?.message ?? "", "角色归档失败或角色不存在") } : { ok: true, value: true };
+}
+
+export async function archiveGameAccount(accountId: string): Promise<Result<true, string>> {
+  if (!z.string().uuid().safeParse(accountId).success) return { ok: false, error: "账号信息不正确" };
+  const client = await createServerClient();
+  let space: CurrentSpace;
+  try {
+    space = await requireCurrentSpace(client);
+  } catch {
+    return currentSpaceError();
+  }
+
+  const { data, error } = await client
+    .from("game_accounts")
+    .update({ is_archived: true })
+    .eq("id", accountId)
+    .eq("profile_id", space.profileId)
+    .eq("group_id", space.groupId)
+    .select("id")
+    .maybeSingle();
+  return error || !data ? { ok: false, error: accountWriteError(error?.message ?? "", "账号归档失败或账号不存在") } : { ok: true, value: true };
 }

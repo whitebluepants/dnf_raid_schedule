@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { ScheduleWorkbenchData } from "@/features/schedule-workbench/repository";
 import { ScheduleWorkbench } from "@/features/schedule-workbench/schedule-workbench";
-import { saveScheduleDraft } from "@/features/schedule-workbench/actions";
+import { saveScheduleDraft, setManagedMemberAttendance } from "@/features/schedule-workbench/actions";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/features/schedule-workbench/actions", () => ({
@@ -12,6 +12,7 @@ vi.mock("@/features/schedule-workbench/actions", () => ({
   replaceScheduleSnapshot: vi.fn().mockResolvedValue({ status: "success", data: { version: 2 } }),
   saveScheduleDraft: vi.fn().mockResolvedValue({ status: "success", data: { versions: { "wave-1": 2 } } }),
   setMemberAttendance: vi.fn(),
+  setManagedMemberAttendance: vi.fn().mockResolvedValue({ status: "success", data: { changed: true } }),
 }));
 
 const character = (id: string, name: string, accountId: string) => ({
@@ -62,6 +63,10 @@ const data = (): ScheduleWorkbenchData => ({
   weeklyUsedCharacterIds: [],
   difficultyPresets: {},
   ownAttendance: "participating",
+  attendanceMembers: [
+    { profileId: "profile-a", displayName: "成员-阿修罗", state: "participating" },
+    { profileId: "profile-b", displayName: "成员-剑魂", state: "absent" },
+  ],
   canManage: true,
 });
 
@@ -113,6 +118,18 @@ describe("ScheduleWorkbench", () => {
 
     expect(screen.getByText("同一波次不能安排同一账号的多个角色")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^红队 3号 C 槽位，空/ })).toBeInTheDocument();
+  });
+
+  test("lets a manager set a chosen member absent while ordinary members remain self-only", async () => {
+    const fixture = data();
+    const { rerender } = render(<ScheduleWorkbench initialData={fixture} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "将成员-阿修罗标记缺席" }));
+    await waitFor(() => expect(setManagedMemberAttendance).toHaveBeenCalledWith("event-1", "profile-a", "absent"));
+
+    rerender(<ScheduleWorkbench initialData={{ ...fixture, canManage: false }} />);
+    expect(screen.queryByText("成员出席管理")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "标记我缺席" })).toBeInTheDocument();
   });
 
   test("preserves dirty local edits on a remote refresh until the user reloads the server version", async () => {

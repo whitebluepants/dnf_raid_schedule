@@ -110,7 +110,7 @@ export async function addCharacter(
   } else {
     await dialog.getByLabel("模拟伤害").fill("1000");
   }
-  await dialog.getByRole("button", { name: "新增角色", exact: true }).click();
+  await dialog.getByRole("button", { name: "保存角色", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("heading", { name: character.name })).toBeVisible();
 }
@@ -131,17 +131,27 @@ export async function createHardActivity(page: Page, title: string) {
   await page.getByLabel("活动时间").fill("2030-01-05T20:00");
   await page.getByRole("button", { name: "创建活动", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("活动与波次已创建");
-  const activity = page.getByRole("heading", { name: title }).locator("..").locator("..");
+  // Current activity cards render the title and action links as siblings in
+  // the same card body. Scope links to that shared ancestor rather than a
+  // brittle fixed number of parent traversals.
+  const activity = page
+    .getByRole("heading", { name: title, exact: true })
+    .locator("xpath=ancestor::div[.//a[normalize-space(.)='去报名']][1]");
   await expect(activity).toBeVisible();
   return activity;
 }
 
 export async function signUpAllCharacters(page: Page, signupLink: Locator, characters: Array<{ name: string }>) {
   await signupLink.click();
-  await expect(page.getByRole("heading", { name: "活动报名" })).toBeVisible();
+  // The current signup page uses the activity title as its only heading;
+  // bind to the actual registration form and its submit control instead.
+  const signupForm = page
+    .getByRole("button", { name: "保存报名", exact: true })
+    .locator("xpath=ancestor::form[1]");
+  await expect(signupForm).toBeVisible();
   for (const character of characters) {
-    await page.getByRole("checkbox", { name: new RegExp(character.name) }).check();
+    await signupForm.getByRole("checkbox", { name: new RegExp(character.name) }).check();
   }
-  await page.getByRole("button", { name: "保存报名", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("报名已保存");
+  await signupForm.getByRole("button", { name: "保存报名", exact: true }).click();
+  await expect(signupForm.getByRole("alert")).toContainText("报名已保存");
 }

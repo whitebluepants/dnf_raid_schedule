@@ -16,6 +16,7 @@ const migrationNames = [
   "202608190007_activity_transactions.sql",
   "202608190008_schedule_workbench_functions.sql",
   "202608190009_registration_schedule_integrity.sql",
+  "202608190010_schedule_security_and_terminal_guards.sql",
 ];
 const migrationPaths = migrationNames.map((name) => resolve(process.cwd(), "supabase/migrations", name));
 const migrationPath = migrationPaths.at(-1) ?? "";
@@ -51,6 +52,15 @@ function failure(userId: string, sql: string): string {
 
 function authenticated(userId: string, sql: string): string {
   return psql(`begin; set local role authenticated; set local request.jwt.claim.sub = '${userId}'; ${sql} rollback;`);
+}
+
+function failureAfterSetup(userId: string, setup: string, sql: string): string {
+  const result = spawnSync("docker", ["exec", "-i", containerName, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-Atq"], {
+    encoding: "utf8",
+    input: `begin; ${setup} set local role authenticated; set local request.jwt.claim.sub = '${userId}'; ${sql} rollback;`,
+  });
+  expect(result.status).not.toBe(0);
+  return `${result.stdout}\n${result.stderr}`;
 }
 
 const integration = dockerAvailable() ? describe : describe.skip;
@@ -142,6 +152,78 @@ integration("schedule workbench database functions", () => {
     expect(failure(adminA, `select public.publish_schedule('${eventA}', jsonb_build_object('${waveA}', 1));`)).toMatch(/schedule_incomplete/);
   });
 
+  test("revokes direct authenticated DML on atomic activity and schedule tables", () => {
+    const attempts = [
+      `update public.raid_events set status = 'completed' where id = '${eventA}'`,
+      `update public.raid_waves set status = 'completed' where id = '${waveA}'`,
+      `update public.event_registrations set state = 'absent' where raid_event_id = '${eventA}' and profile_id = '${member}'`,
+      `delete from public.event_character_registrations where raid_event_id = '${eventA}' and profile_id = '${member}'`,
+      `insert into public.schedule_slots (raid_wave_id, team_color, slot_index, slot_role) values ('${waveA}', 'red', 1, 'buffer')`,
+      `delete from public.character_weekly_usage where raid_event_id = '${eventA}'`,
+      `delete from public.schedule_revisions where raid_event_id = '${eventA}'`,
+    ];
+    for (const statement of attempts) expect(failure(adminA, `${statement};`)).toMatch(/permission denied/);
+    expect(failure(adminA, `select public.replace_schedule_snapshot_atomic('${eventA}', '${waveA}', 1, '${emptySnapshot}'::jsonb);`)).toMatch(/permission denied/);
+    expect(authenticated(member, `select count(*) from public.raid_events where id = '${eventA}';`)).toBe("1");
+  });
+
+  test.each(["completed", "archived"] as const)("all schedule RPCs reject a %s event", (status) => {
+    const setup = `update public.raid_events set status = '${status}' where id = '${eventA}';`;
+    const calls = [
+      `select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${emptySnapshot}'::jsonb);`,
+      `select public.replace_event_schedule_snapshots('${eventA}', jsonb_build_object('${waveA}', 1), jsonb_build_object('${waveA}', '${emptySnapshot}'::jsonb));`,
+      `select public.set_schedule_member_attendance('${eventA}', '${member}', 'absent');`,
+      `select public.publish_schedule('${eventA}', jsonb_build_object('${waveA}', 1));`,
+    ];
+    for (const call of calls) expect(failureAfterSetup(adminA, setup, call)).toMatch(/schedule_closed/);
+  });
+
+  test.each(["completed", "archived"] as const)("schedule RPCs never mutate a %s wave", (status) => {
+    const setup = `update public.raid_waves set status = '${status}' where id = '${waveA}';`;
+    const calls = [
+      `select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${emptySnapshot}'::jsonb);`,
+      `select public.replace_event_schedule_snapshots('${eventA}', jsonb_build_object('${waveA}', 1), jsonb_build_object('${waveA}', '${emptySnapshot}'::jsonb));`,
+      `select public.publish_schedule('${eventA}', jsonb_build_object('${waveA}', 1));`,
+    ];
+    for (const call of calls) expect(failureAfterSetup(adminA, setup, call)).toMatch(/schedule_closed/);
+  });
+
+  test.each(["completed", "archived"] as const)("attendance cleanup rejects an assigned %s wave", (status) => {
+    const assignedSnapshot = JSON.stringify(JSON.parse(emptySnapshot).map((slot: Record<string, unknown>) =>
+      slot.team_color === "red" && slot.slot_index === 2
+        ? { ...slot, character_id: character, game_account_id: account, profile_id: member }
+        : slot,
+    ));
+    expect(failure(adminA, `
+      select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${assignedSnapshot}'::jsonb);
+      reset role;
+      update public.raid_waves set status = '${status}' where id = '${waveA}';
+      set local role authenticated;
+      set local request.jwt.claim.sub = '${adminA}';
+      select public.set_schedule_member_attendance('${eventA}', '${member}', 'absent');
+    `)).toMatch(/schedule_closed/);
+  });
+
+  test("allows admins and platform admins to set member attendance while members remain self-only", () => {
+    const assignedSnapshot = JSON.stringify(JSON.parse(emptySnapshot).map((slot: Record<string, unknown>) =>
+      slot.team_color === "red" && slot.slot_index === 2
+        ? { ...slot, character_id: character, game_account_id: account, profile_id: member }
+        : slot,
+    ));
+    expect(authenticated(adminA, `
+      select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${assignedSnapshot}'::jsonb);
+      select public.set_schedule_member_attendance('${eventA}', '${member}', 'absent');
+      select registration.state || '|' || wave.version || '|' || count(slot.assigned_character_id)
+      from public.event_registrations registration
+      join public.raid_waves wave on wave.raid_event_id = registration.raid_event_id
+      left join public.schedule_slots slot on slot.raid_wave_id = wave.id and slot.assigned_profile_id = '${member}'
+      where registration.raid_event_id = '${eventA}' and registration.profile_id = '${member}'
+      group by registration.state, wave.version;
+    `)).toBe("2\nt\nabsent|3|0");
+    expect(authenticated(platformAdmin, `select public.set_schedule_member_attendance('${eventA}', '${member}', 'absent');`)).toBe("t");
+    expect(failure(member, `select public.set_schedule_member_attendance('${eventA}', '${adminA}', 'absent');`)).toMatch(/attendance_forbidden/);
+  });
+
   test("lets a member mark their own signup absent and atomically releases their reserved slot", () => {
     const assignedSnapshot = JSON.stringify(JSON.parse(emptySnapshot).map((slot: Record<string, unknown>) =>
       slot.team_color === "red" && slot.slot_index === 2
@@ -169,7 +251,10 @@ integration("schedule workbench database functions", () => {
   test("revalidates attendance at publish even when registration changed outside the workbench RPC", () => {
     expect(failure(adminA, `
       select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${completeSnapshot}'::jsonb);
+      reset role;
       update public.event_registrations set state = 'absent' where raid_event_id = '${eventA}' and profile_id = '${member}';
+      set local role authenticated;
+      set local request.jwt.claim.sub = '${adminA}';
       select public.publish_schedule('${eventA}', jsonb_build_object('${waveA}', 2));
     `)).toMatch(/schedule_registration_invalid/);
   });
@@ -190,8 +275,10 @@ integration("schedule workbench database functions", () => {
   test.each(["completed", "archived"] as const)("rejects registration changes for a %s event without mutating schedule history", (status) => {
     const output = authenticated(adminA, `
       select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${completeSnapshot}'::jsonb);
+      reset role;
       update public.raid_events set status = '${status}' where id = '${eventA}';
       update public.raid_waves set status = '${status}' where id = '${waveA}';
+      set local role authenticated;
       set local request.jwt.claim.sub = '${member}';
       do $registration$
       begin
@@ -220,8 +307,10 @@ integration("schedule workbench database functions", () => {
   test.each(["completed", "archived"] as const)("rejects registration changes that would rewrite a %s wave", (status) => {
     const output = authenticated(adminA, `
       select public.replace_schedule_snapshot('${eventA}', '${waveA}', 1, '${completeSnapshot}'::jsonb);
+      reset role;
       update public.raid_events set status = 'open' where id = '${eventA}';
       update public.raid_waves set status = '${status}' where id = '${waveA}';
+      set local role authenticated;
       set local request.jwt.claim.sub = '${member}';
       do $registration$
       begin

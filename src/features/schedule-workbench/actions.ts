@@ -103,6 +103,29 @@ export async function setMemberAttendance(eventId: string, state: "participating
   });
 }
 
+export async function setManagedMemberAttendance(
+  eventId: string,
+  profileId: string,
+  state: "participating" | "absent",
+): Promise<ScheduleMutationResult<{ changed: boolean }>> {
+  const parsed = z.object({ eventId: uuid, profileId: uuid, state: z.enum(["participating", "absent"]) }).safeParse({ eventId, profileId, state });
+  if (!parsed.success) return invalid("出席状态格式不正确");
+  return runScheduleAction(async () => {
+    const client = await createServerClient();
+    const space = await requireCurrentSpace(client);
+    if (!canManageSchedule(space)) return { status: "forbidden", message: "只有空间管理员可以代设成员出席" };
+    const workbench = await getScheduleWorkbench(client, space, parsed.data.eventId);
+    if (!workbench) return { status: "forbidden", message: "活动不属于当前空间" };
+    const result = await setMemberAttendanceRepository(client, {
+      raidEventId: parsed.data.eventId,
+      profileId: parsed.data.profileId,
+      state: parsed.data.state,
+    });
+    if (result.status === "success") revalidatePath(`/activities/${parsed.data.eventId}/schedule`);
+    return result;
+  });
+}
+
 export async function publishSchedule(eventId: string, versions: Record<string, number>): Promise<ScheduleMutationResult<{ published: boolean }>> {
   const parsed = z.object({ eventId: uuid, versions: z.record(uuid, z.number().int().positive()) }).safeParse({ eventId, versions });
   if (!parsed.success) return invalid("排表版本格式不正确");

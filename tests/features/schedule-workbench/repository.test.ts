@@ -53,7 +53,10 @@ function workbenchClient() {
       { id: ids.unregisteredCharacter, game_account_id: ids.account, profile_id: ids.profile, name: "未报名角色", role: "dealer", fame: 90000, strength_tier: "high", simulated_damage: 300, buffer_power: null },
     ], error: null }],
     game_accounts: [{ data: [{ id: ids.account, group_id: ids.group, name: "主账号" }], error: null }],
-    profiles: [{ data: [{ id: ids.profile, display_name: "团员甲" }], error: null }],
+    profiles: [{ data: [
+      { id: ids.profile, display_name: "团员甲" },
+      { id: ids.absentProfile, display_name: "团员乙" },
+    ], error: null }],
     schedule_slots: [{ data: [], error: null }],
     character_weekly_usage: [{ data: [], error: null }],
     difficulty_presets: [{ data: [], error: null }],
@@ -81,6 +84,10 @@ describe("schedule workbench repository", () => {
 
     expect(result?.characters.map((character) => character.id)).toEqual([ids.registeredCharacter]);
     expect(result?.characters[0]).toMatchObject({ memberName: "团员甲", accountName: "主账号" });
+    expect(result?.attendanceMembers).toEqual([
+      { profileId: ids.profile, displayName: "团员甲", state: "participating" },
+      { profileId: ids.absentProfile, displayName: "团员乙", state: "absent" },
+    ]);
     expect(calls.characters[0].eq).toHaveBeenCalledWith("group_id", ids.group);
     expect(calls.event_character_registrations[0].eq).toHaveBeenCalledWith("raid_event_id", ids.event);
   });

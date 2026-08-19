@@ -31,10 +31,13 @@ test.describe("排表生成、手动保存和发布", () => {
       const activity = await createHardActivity(adminPage, title);
       await signUpAllCharacters(adminPage, activity.getByRole("link", { name: "去报名" }), characters);
       await goTo(adminPage, "/activities");
-      const activityCard = adminPage.getByRole("heading", { name: title }).locator("..").locator("..");
-      const scheduleHref = await activityCard.getByRole("link", { name: "进入排表工作台" }).getAttribute("href");
+      const activityCard = adminPage
+        .getByRole("heading", { name: title, exact: true })
+        .locator("xpath=ancestor::div[.//a[normalize-space(.)='进入排表工作台']][1]");
+      const scheduleLink = activityCard.getByRole("link", { name: "进入排表工作台", exact: true });
+      const scheduleHref = await scheduleLink.getAttribute("href");
       if (!scheduleHref) throw new Error("Expected a schedule workbench URL for the created E2E activity.");
-      await activityCard.getByRole("link", { name: "进入排表工作台" }).click();
+      await scheduleLink.click();
 
       await adminPage.getByRole("button", { name: "自动生成", exact: true }).click();
       await expect(adminPage.getByRole("status")).toContainText("初稿已生成");
@@ -77,6 +80,8 @@ test.describe("排表生成、手动保存和发布", () => {
         await joinSpace(viewerSession.page, inviteCode);
         await goTo(viewerSession.page, scheduleHref);
         await expect(viewerSession.page.getByText("已发布", { exact: true })).toBeVisible();
+        await expect(viewerSession.page.getByRole("button", { name: firstAfter, exact: true })).toBeDisabled();
+        await expect(viewerSession.page.getByRole("button", { name: secondAfter, exact: true })).toBeDisabled();
       } finally {
         await viewerSession.context.close();
       }

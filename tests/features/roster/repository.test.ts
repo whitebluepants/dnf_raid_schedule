@@ -14,7 +14,7 @@ vi.mock("@/lib/current-space", () => ({
 }));
 
 import { listRoster } from "@/features/roster/repository";
-import { archiveCharacter, saveCharacter } from "@/features/roster/actions";
+import { archiveCharacter, archiveGameAccount, saveCharacter } from "@/features/roster/actions";
 
 const GROUP_ID = "00000000-0000-4000-8000-000000000001";
 const PROFILE_ID = "00000000-0000-4000-8000-000000000002";
@@ -187,6 +187,52 @@ describe("roster writes", () => {
     expect(characters.eq).toHaveBeenCalledWith("id", "00000000-0000-4000-8000-000000000003");
     expect(characters.eq).toHaveBeenCalledWith("profile_id", PROFILE_ID);
     expect(characters.eq).toHaveBeenCalledWith("group_id", GROUP_ID);
+  });
+
+  test("explains when the database rejects archive for a scheduled character", async () => {
+    const characters = query({ data: null, error: { message: "scheduled_character_locked" } });
+    const from = vi.fn().mockReturnValue(characters);
+    actionMocks.client = { from };
+    actionMocks.requireCurrentSpace.mockResolvedValue({ groupId: GROUP_ID, profileId: PROFILE_ID, role: "member", isPlatformAdmin: false });
+
+    await expect(archiveCharacter("00000000-0000-4000-8000-000000000003")).resolves.toEqual({
+      ok: false,
+      error: "角色已在进行中的活动排表中，无法归档或变更定位/账号",
+    });
+  });
+
+  test("explains when the database rejects account archive for a scheduled character", async () => {
+    const accounts = query({ data: null, error: { message: "scheduled_account_locked" } });
+    const from = vi.fn().mockReturnValue(accounts);
+    actionMocks.client = { from };
+    actionMocks.requireCurrentSpace.mockResolvedValue({ groupId: GROUP_ID, profileId: PROFILE_ID, role: "member", isPlatformAdmin: false });
+
+    await expect(archiveGameAccount("00000000-0000-4000-8000-000000000004")).resolves.toEqual({
+      ok: false,
+      error: "账号中的角色已在进行中的活动排表中，无法归档或变更账号归属",
+    });
+  });
+
+  test("explains when the database rejects a role edit for a scheduled character", async () => {
+    const accounts = query({ data: { id: "account-1" }, error: null });
+    const characters = query({ data: null, error: { message: "scheduled_character_locked" } });
+    const from = vi.fn((table: string) => table === "game_accounts" ? accounts : characters);
+    actionMocks.client = { from };
+    actionMocks.requireCurrentSpace.mockResolvedValue({ groupId: GROUP_ID, profileId: PROFILE_ID, role: "member", isPlatformAdmin: false });
+
+    await expect(saveCharacter({
+      characterId: "00000000-0000-4000-8000-000000000003",
+      accountId: "account-1",
+      name: "奶妈",
+      className: "圣职者",
+      role: "buffer",
+      fame: 80000,
+      strengthTier: "high",
+      buffScore: 1000,
+    })).resolves.toEqual({
+      ok: false,
+      error: "角色已在进行中的活动排表中，无法归档或变更定位/账号",
+    });
   });
 
   test("rejects a malformed archive id before creating a database query", async () => {
