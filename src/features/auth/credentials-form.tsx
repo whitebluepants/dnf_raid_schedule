@@ -9,8 +9,10 @@ import { login, register } from "./actions";
 
 type Mode = "login" | "register";
 
-function safeNext(next: string | null): string {
-  return next?.startsWith("/") && !next.startsWith("//") ? next : "/spaces";
+export function safeNext(next: string | null): string {
+  return next?.startsWith("/") && !next.startsWith("//") && !next.includes("\\")
+    ? next
+    : "/spaces";
 }
 
 export function CredentialsForm({ mode }: { mode: Mode }) {

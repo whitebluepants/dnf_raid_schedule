@@ -63,6 +63,7 @@ export type Database = {
       game_accounts: {
         Row: {
           id: string;
+          group_id: string | null;
           profile_id: string;
           name: string;
           is_archived: boolean;
@@ -71,7 +72,7 @@ export type Database = {
         };
         Insert: InsertShape<
           Database["public"]["Tables"]["game_accounts"]["Row"],
-          "id" | "is_archived" | "created_at" | "updated_at"
+          "id" | "group_id" | "is_archived" | "created_at" | "updated_at"
         >;
         Update: UpdateShape<Database["public"]["Tables"]["game_accounts"]["Row"]>;
         Relationships: [];
@@ -80,6 +81,7 @@ export type Database = {
         Row: {
           id: string;
           game_account_id: string;
+          group_id: string | null;
           profile_id: string;
           name: string;
           class_name: string;
@@ -97,6 +99,7 @@ export type Database = {
         Insert: InsertShape<
           Database["public"]["Tables"]["characters"]["Row"],
           | "id"
+          | "group_id"
           | "simulated_damage"
           | "buffer_power"
           | "notes"

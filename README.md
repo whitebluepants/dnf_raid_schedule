@@ -33,7 +33,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<Supabase 项目的 anon public key>
 1. `supabase/migrations/202608190001_initial_schema.sql`
 2. `supabase/migrations/202608190002_schedule_functions.sql`
 3. `supabase/migrations/202608190003_auth_and_spaces.sql`
-4. `supabase/seed.sql`
+4. `supabase/migrations/202608190004_space_scoped_characters.sql`
+5. `supabase/seed.sql`
 
 本工具的界面只收集“昵称 + 密码”。Supabase 仍使用 Password 登录提供商，因此请在 Authentication 的 Email 设置中关闭 **Confirm email**；否则新成员注册后无法直接登录。站点 URL 和 Redirect URL 应包含 Vercel 的部署域名。
 

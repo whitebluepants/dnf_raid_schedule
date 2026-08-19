@@ -16,6 +16,10 @@ const authSpacesMigrationPath = resolve(
   process.cwd(),
   "supabase/migrations/202608190003_auth_and_spaces.sql",
 );
+const spaceIsolationMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/202608190004_space_scoped_characters.sql",
+);
 const seedPath = resolve(process.cwd(), "supabase/seed.sql");
 const containerName = `dnf-schema-test-${process.pid}-${randomUUID().slice(0, 8)}`;
 
@@ -209,6 +213,7 @@ integration("initial Supabase migration", () => {
     psql(readFileSync(migrationPath, "utf8"));
     psql(readFileSync(scheduleMigrationPath, "utf8"));
     psql(readFileSync(authSpacesMigrationPath, "utf8"));
+    psql(readFileSync(spaceIsolationMigrationPath, "utf8"));
   }, 120_000);
 
   afterAll(() => {
@@ -263,6 +268,75 @@ integration("initial Supabase migration", () => {
     expect(space).toBe("固定团|TEAM2026|admin");
   });
 
+  test("does not expose a member's characters from a different space", () => {
+    const sharedMember = randomUUID();
+    const spaceAObserver = randomUUID();
+    const spaceA = randomUUID();
+    const spaceB = randomUUID();
+    const accountId = randomUUID();
+    const characterId = randomUUID();
+    const spaceAEvent = randomUUID();
+
+    psql(`
+      insert into auth.users (id) values ('${sharedMember}'), ('${spaceAObserver}');
+      insert into public.profiles (id, display_name) values
+        ('${sharedMember}', '跨空间成员'),
+        ('${spaceAObserver}', 'A 空间观察者');
+      insert into public.groups (id, name, invite_code_digest, created_by) values
+        ('${spaceA}', 'A 空间', '${randomUUID().replaceAll("-", "")}', '${sharedMember}'),
+        ('${spaceB}', 'B 空间', '${randomUUID().replaceAll("-", "")}', '${sharedMember}');
+      insert into public.group_members (group_id, profile_id, role) values
+        ('${spaceA}', '${sharedMember}', 'admin'),
+        ('${spaceA}', '${spaceAObserver}', 'member'),
+        ('${spaceB}', '${sharedMember}', 'admin');
+      insert into public.game_accounts (id, group_id, profile_id, name)
+      values ('${accountId}', '${spaceB}', '${sharedMember}', 'B 空间账号');
+      insert into public.characters (id, game_account_id, group_id, profile_id, name, class_name, role, fame, strength_tier)
+      values ('${characterId}', '${accountId}', '${spaceB}', '${sharedMember}', 'B 空间角色', '职业', 'dealer', 50000, 'high');
+      insert into public.raid_events (id, group_id, title, game_week, event_date, status, created_by)
+      values ('${spaceAEvent}', '${spaceA}', 'A 空间活动', '2026-08-17', '2026-08-22 12:00:00+00', 'open', '${sharedMember}');
+    `);
+
+    expect(
+      asAuthenticated(
+        spaceAObserver,
+        `select name from public.game_accounts where id = '${accountId}';`,
+      ),
+    ).toBe("");
+    expect(
+      asAuthenticated(
+        spaceAObserver,
+        `select name from public.characters where id = '${characterId}';`,
+      ),
+    ).toBe("");
+
+    expect(
+      psqlFailure(`
+        begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub = '${sharedMember}';
+        select public.replace_event_registration(
+          '${spaceAEvent}',
+          'participating',
+          array['${characterId}'::uuid]
+        );
+        rollback;
+      `),
+    ).toMatch(/character_forbidden/);
+    expect(
+      psqlFailure(`
+        begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub = '${sharedMember}';
+        insert into public.event_registrations (raid_event_id, profile_id, state)
+        values ('${spaceAEvent}', '${sharedMember}', 'participating');
+        insert into public.event_character_registrations (raid_event_id, profile_id, character_id)
+        values ('${spaceAEvent}', '${sharedMember}', '${characterId}');
+        rollback;
+      `),
+    ).toMatch(/row-level security policy/);
+  });
+
   test("creates every persisted table and enables row level security", () => {
     const rows = psql(`
       select c.relname
@@ -300,7 +374,7 @@ integration("initial Supabase migration", () => {
       "profiles:FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE",
     );
     expect(foreignKeys).toContain(
-      "characters:FOREIGN KEY (game_account_id, profile_id) REFERENCES game_accounts(id, profile_id)",
+      "characters:FOREIGN KEY (game_account_id, profile_id, group_id) REFERENCES game_accounts(id, profile_id, group_id)",
     );
     expect(foreignKeys).toContain(
       "event_character_registrations:FOREIGN KEY (raid_event_id, profile_id) REFERENCES event_registrations(raid_event_id, profile_id) ON DELETE CASCADE",
@@ -589,12 +663,12 @@ const seedFixtures = `
     ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000001', 'member'),
     ('00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000002', 'admin')
   on conflict do nothing;
-  insert into game_accounts (id, profile_id, name) values
-    ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000001', 'Alice account'),
-    ('00000000-0000-0000-0000-000000000202', '00000000-0000-0000-0000-000000000003', 'Oscar account')
+  insert into game_accounts (id, group_id, profile_id, name) values
+    ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000001', 'Alice account'),
+    ('00000000-0000-0000-0000-000000000202', null, '00000000-0000-0000-0000-000000000003', 'Oscar account')
   on conflict do nothing;
-  insert into characters (id, game_account_id, profile_id, name, class_name, role, fame, strength_tier) values
-    ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000001', 'Alice dealer', 'Class', 'dealer', 50000, 'high')
+  insert into characters (id, game_account_id, group_id, profile_id, name, class_name, role, fame, strength_tier) values
+    ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000001', 'Alice dealer', 'Class', 'dealer', 50000, 'high')
   on conflict do nothing;
   insert into raid_events (id, group_id, title, game_week, event_date, status, created_by) values
     ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000101', 'Weekly raid', '2026-08-17', '2026-08-22 12:00:00+00', 'open', '00000000-0000-0000-0000-000000000002')

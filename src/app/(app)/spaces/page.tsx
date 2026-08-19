@@ -28,7 +28,7 @@ export default async function SpacesPage() {
       <section>
         <p className="text-sm font-semibold text-cyan-700">团队空间</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">创建或加入空间</h1>
-        <p className="mt-2 text-sm text-slate-600">每个空间的数据彼此隔离。角色、报名、活动和排表都只属于对应空间。</p>
+        <p className="mt-2 text-sm text-slate-600">每个空间的数据彼此隔离。成员、账号和角色已按空间归属；后续活动、报名和排表也会沿用同一边界。</p>
       </section>
       {spaces.length > 0 ? <section className="grid gap-4 sm:grid-cols-2">
         {spaces.map((space) => <article key={space.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
