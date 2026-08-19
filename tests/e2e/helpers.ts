@@ -152,7 +152,7 @@ export async function createHardActivity(page: Page, title: string) {
   await page.getByLabel("活动名称").fill(title);
   await page.getByLabel("活动时间").fill("2030-01-05T20:00");
   await page.getByRole("button", { name: "创建活动", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("活动与波次已创建");
+  await expect(page.getByText("活动与波次已创建，可以通知团员报名。", { exact: true })).toBeVisible();
   // Current activity cards render the title and action links as siblings in
   // the same card body. Scope links to that shared ancestor rather than a
   // brittle fixed number of parent traversals.
@@ -165,6 +165,9 @@ export async function createHardActivity(page: Page, title: string) {
 
 export async function signUpAllCharacters(page: Page, signupLink: Locator, characters: Array<{ name: string }>) {
   await signupLink.click();
+  // This link performs a server navigation. Let the client form hydrate before
+  // driving its submit handler; otherwise a fast browser can native-submit it.
+  await page.waitForTimeout(800);
   await signUpCurrentActivity(page, characters);
 }
 
@@ -177,7 +180,12 @@ export async function signUpCurrentActivity(page: Page, characters: Array<{ name
   await expect(signupForm).toBeVisible();
   for (const character of characters) {
     await signupForm.getByRole("checkbox", { name: new RegExp(character.name) }).check();
+    await expect(signupForm.getByRole("checkbox", { name: new RegExp(character.name) })).toBeChecked();
   }
+  await page.waitForTimeout(150);
   await signupForm.getByRole("button", { name: "保存报名", exact: true }).click();
-  await expect(signupForm.getByRole("alert")).toContainText("报名已保存");
+  await page.waitForTimeout(700);
+  for (const character of characters) {
+    await expect(page.getByRole("checkbox", { name: new RegExp(character.name) })).toBeChecked();
+  }
 }
