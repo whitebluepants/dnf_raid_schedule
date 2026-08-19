@@ -83,6 +83,21 @@ test("the versioned initial migration exists", () => {
   expect(() => readFileSync(migrationPath, "utf8")).not.toThrow();
 });
 
+test("keeps schedule writes behind the future transactional boundary", () => {
+  const migration = readFileSync(migrationPath, "utf8");
+
+  expect(migration).toMatch(
+    /create policy schedule_slots_select_members[\s\S]*create policy character_weekly_usage_select_members/,
+  );
+  expect(migration).not.toMatch(/create policy schedule_slots_leader_manage/);
+  expect(migration).not.toMatch(/create policy schedule_revisions_leader_manage/);
+  expect(migration).toMatch(
+    /constraint schedule_revisions_wave_event_fk[\s\S]*foreign key \(raid_wave_id, raid_event_id\)/,
+  );
+  expect(migration).toMatch(/create policy groups_admin_insert/);
+  expect(migration).not.toMatch(/create policy groups_admin_manage/);
+});
+
 integration("initial Supabase migration", () => {
   beforeAll(() => {
     execFileSync(
@@ -301,23 +316,27 @@ integration("initial Supabase migration", () => {
       "profiles|SELECT|profiles_select_self_or_peer",
       "profiles|UPDATE|profiles_update_self",
       "game_accounts|SELECT|game_accounts_select_group",
-      "game_accounts|ALL|game_accounts_owner_write",
+      "game_accounts|INSERT|game_accounts_owner_insert",
+      "game_accounts|UPDATE|game_accounts_owner_update",
       "characters|SELECT|characters_select_group",
-      "characters|ALL|characters_owner_write",
+      "characters|INSERT|characters_owner_insert",
+      "characters|UPDATE|characters_owner_update",
       "groups|SELECT|groups_select_members",
-      "groups|ALL|groups_admin_manage",
+      "groups|INSERT|groups_admin_insert",
+      "groups|UPDATE|groups_admin_update",
       "group_members|SELECT|group_members_select_members",
       "group_members|ALL|group_members_admin_manage",
       "difficulty_presets|SELECT|difficulty_presets_select_members",
       "difficulty_presets|ALL|difficulty_presets_admin_manage",
       "raid_events|SELECT|raid_events_select_members",
-      "raid_events|ALL|raid_events_leader_manage",
+      "raid_events|INSERT|raid_events_leader_insert",
+      "raid_events|UPDATE|raid_events_leader_update",
       "event_registrations|ALL|event_registrations_self_write",
       "event_registrations|ALL|event_registrations_leader_manage",
       "event_character_registrations|ALL|event_character_registrations_self_write",
       "event_character_registrations|ALL|event_character_registrations_leader_manage",
       "character_weekly_usage|SELECT|character_weekly_usage_select_members",
-      "schedule_revisions|ALL|schedule_revisions_leader_manage",
+      "schedule_revisions|SELECT|schedule_revisions_select_members",
     ]) {
       expect(policies).toContain(contract);
     }
@@ -357,7 +376,7 @@ integration("initial Supabase migration", () => {
     ).toMatch(/character_weekly_usage_week_character_key/);
   });
 
-  test("allows peer reads, limits owner writes, and reserves schedule writes for leaders", () => {
+  test("allows peer reads, limits owner writes, and reserves schedule writes for RPCs", () => {
     const user = "00000000-0000-0000-0000-000000000001";
     const admin = "00000000-0000-0000-0000-000000000002";
     const outsider = "00000000-0000-0000-0000-000000000003";
@@ -398,6 +417,43 @@ integration("initial Supabase migration", () => {
         "update raid_events set title = 'allowed' where id = '00000000-0000-0000-0000-000000000401' returning title;",
       ),
     ).toBe("allowed");
+
+    expect(
+      psqlFailure(`
+        begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub = '${admin}';
+        insert into schedule_slots (raid_wave_id, team_color, slot_index, slot_role)
+        values ('00000000-0000-0000-0000-000000000501', 'yellow', 1, 'dealer');
+        rollback;
+      `),
+    ).toMatch(/row-level security policy/);
+
+    expect(
+      psqlFailure(`
+        begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub = '${admin}';
+        insert into schedule_revisions (raid_event_id, raid_wave_id, action, actor_profile_id)
+        values ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000501', 'generate', '${admin}');
+        rollback;
+      `),
+    ).toMatch(/row-level security policy/);
+  });
+
+  test("rejects leader writes that target profiles outside the event group", () => {
+    const admin = "00000000-0000-0000-0000-000000000002";
+    psql(seedFixtures);
+    expect(
+      psqlFailure(`
+        begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub = '${admin}';
+        insert into event_registrations (raid_event_id, profile_id)
+        values ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000003');
+        rollback;
+      `),
+    ).toMatch(/row-level security policy/);
   });
 
   test("permits self registration but blocks direct weekly-usage writes", () => {

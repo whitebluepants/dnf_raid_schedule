@@ -90,7 +90,7 @@ create table public.characters (
   constraint characters_account_owner_fk
     foreign key (game_account_id, profile_id)
     references public.game_accounts(id, profile_id)
-    on delete cascade,
+    on delete restrict,
   constraint characters_id_profile_key unique (id, profile_id),
   constraint characters_assignment_identity_key unique (id, game_account_id, profile_id),
   constraint characters_account_name_key unique (game_account_id, name)
@@ -98,7 +98,7 @@ create table public.characters (
 
 create table public.difficulty_presets (
   id uuid primary key default gen_random_uuid(),
-  group_id uuid references public.groups(id) on delete cascade,
+  group_id uuid references public.groups(id) on delete restrict,
   code public.difficulty_code not null,
   name text not null check (length(btrim(name)) between 1 and 80),
   minimum_fame integer check (minimum_fame is null or minimum_fame > 0),
@@ -123,7 +123,7 @@ create unique index difficulty_presets_global_code_key
 
 create table public.raid_events (
   id uuid primary key default gen_random_uuid(),
-  group_id uuid not null references public.groups(id) on delete cascade,
+  group_id uuid not null references public.groups(id) on delete restrict,
   title text not null check (length(btrim(title)) between 1 and 160),
   game_week date not null,
   event_date timestamptz not null,
@@ -174,7 +174,7 @@ create table public.event_character_registrations (
   constraint event_character_registrations_character_owner_fk
     foreign key (character_id, profile_id)
     references public.characters(id, profile_id)
-    on delete cascade,
+    on delete restrict,
   constraint event_character_registrations_event_character_key
     unique (raid_event_id, character_id)
 );
@@ -228,15 +228,19 @@ create table public.character_weekly_usage (
 
 create table public.schedule_revisions (
   id uuid primary key default gen_random_uuid(),
-  raid_event_id uuid not null references public.raid_events(id) on delete cascade,
-  raid_wave_id uuid references public.raid_waves(id) on delete set null,
+  raid_event_id uuid not null references public.raid_events(id) on delete restrict,
+  raid_wave_id uuid,
   action public.revision_action not null,
   actor_profile_id uuid not null references public.profiles(id) on delete restrict,
   expected_version integer check (expected_version is null or expected_version > 0),
   resulting_version integer check (resulting_version is null or resulting_version > 0),
   before_state jsonb not null default '{}'::jsonb,
   after_state jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default timezone('utc', now())
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint schedule_revisions_wave_event_fk
+    foreign key (raid_wave_id, raid_event_id)
+    references public.raid_waves(id, raid_event_id)
+    on delete restrict
 );
 
 create index group_members_profile_group_idx
@@ -384,8 +388,11 @@ with check (id = public.current_profile_id());
 create policy groups_select_members on public.groups
 for select to authenticated
 using (public.is_group_member(id));
-create policy groups_admin_manage on public.groups
-for all to authenticated
+create policy groups_admin_insert on public.groups
+for insert to authenticated
+with check (created_by = public.current_profile_id());
+create policy groups_admin_update on public.groups
+for update to authenticated
 using (public.has_group_role(id, array['admin']::public.member_role[]))
 with check (public.has_group_role(id, array['admin']::public.member_role[]));
 
@@ -407,8 +414,11 @@ using (
       and public.is_group_member(owner_membership.group_id)
   )
 );
-create policy game_accounts_owner_write on public.game_accounts
-for all to authenticated
+create policy game_accounts_owner_insert on public.game_accounts
+for insert to authenticated
+with check (profile_id = public.current_profile_id());
+create policy game_accounts_owner_update on public.game_accounts
+for update to authenticated
 using (profile_id = public.current_profile_id())
 with check (profile_id = public.current_profile_id());
 
@@ -422,8 +432,11 @@ using (
       and public.is_group_member(owner_membership.group_id)
   )
 );
-create policy characters_owner_write on public.characters
-for all to authenticated
+create policy characters_owner_insert on public.characters
+for insert to authenticated
+with check (profile_id = public.current_profile_id());
+create policy characters_owner_update on public.characters
+for update to authenticated
 using (profile_id = public.current_profile_id())
 with check (profile_id = public.current_profile_id());
 
@@ -450,8 +463,14 @@ with check (
 create policy raid_events_select_members on public.raid_events
 for select to authenticated
 using (public.is_group_member(group_id));
-create policy raid_events_leader_manage on public.raid_events
-for all to authenticated
+create policy raid_events_leader_insert on public.raid_events
+for insert to authenticated
+with check (
+  created_by = public.current_profile_id()
+  and public.has_group_role(group_id, array['leader', 'admin']::public.member_role[])
+);
+create policy raid_events_leader_update on public.raid_events
+for update to authenticated
 using (
   status <> 'archived'
   and public.has_group_role(group_id, array['leader', 'admin']::public.member_role[])
@@ -469,8 +488,18 @@ using (
       and public.is_group_member(event.group_id)
   )
 );
-create policy raid_waves_leader_manage on public.raid_waves
-for all to authenticated
+create policy raid_waves_leader_insert on public.raid_waves
+for insert to authenticated
+with check (
+  exists (
+    select 1 from public.raid_events event
+    where event.id = raid_waves.raid_event_id
+      and event.status <> 'archived'
+      and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
+  )
+);
+create policy raid_waves_leader_update on public.raid_waves
+for update to authenticated
 using (
   exists (
     select 1 from public.raid_events event
@@ -534,6 +563,11 @@ with check (
     where event.id = event_registrations.raid_event_id
       and event.status <> 'archived'
       and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
+      and exists (
+        select 1 from public.group_members target_member
+        where target_member.group_id = event.group_id
+          and target_member.profile_id = event_registrations.profile_id
+      )
   )
 );
 
@@ -583,6 +617,11 @@ with check (
     where event.id = event_character_registrations.raid_event_id
       and event.status <> 'archived'
       and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
+      and exists (
+        select 1 from public.group_members target_member
+        where target_member.group_id = event.group_id
+          and target_member.profile_id = event_character_registrations.profile_id
+      )
   )
 );
 
@@ -597,29 +636,6 @@ using (
       and public.is_group_member(event.group_id)
   )
 );
-create policy schedule_slots_leader_manage on public.schedule_slots
-for all to authenticated
-using (
-  exists (
-    select 1
-    from public.raid_waves wave
-    join public.raid_events event on event.id = wave.raid_event_id
-    where wave.id = schedule_slots.raid_wave_id
-      and event.status <> 'archived'
-      and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
-  )
-)
-with check (
-  exists (
-    select 1
-    from public.raid_waves wave
-    join public.raid_events event on event.id = wave.raid_event_id
-    where wave.id = schedule_slots.raid_wave_id
-      and event.status <> 'archived'
-      and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
-  )
-);
-
 create policy character_weekly_usage_select_members on public.character_weekly_usage
 for select to authenticated
 using (
@@ -639,24 +655,5 @@ using (
       and public.is_group_member(event.group_id)
   )
 );
-create policy schedule_revisions_leader_manage on public.schedule_revisions
-for all to authenticated
-using (
-  exists (
-    select 1 from public.raid_events event
-    where event.id = schedule_revisions.raid_event_id
-      and event.status <> 'archived'
-      and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
-  )
-)
-with check (
-  exists (
-    select 1 from public.raid_events event
-    where event.id = schedule_revisions.raid_event_id
-      and event.status <> 'archived'
-      and public.has_group_role(event.group_id, array['leader', 'admin']::public.member_role[])
-  )
-);
-
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
