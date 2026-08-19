@@ -314,6 +314,7 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      replace_event_registration: { Args: { p_raid_event_id: string; p_state: Database["public"]["Enums"]["registration_state"]; p_character_ids: string[] }; Returns: boolean };
       create_group: { Args: { p_name: string; p_invite_code: string }; Returns: string };
       join_group_by_invite: { Args: { p_invite_code: string; p_nickname: string }; Returns: string };
       replace_schedule_snapshot: {
