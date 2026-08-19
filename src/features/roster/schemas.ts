@@ -10,8 +10,9 @@ const base = z.object({
 });
 
 export const characterSchema = z.discriminatedUnion("role", [
-  base.extend({ role: z.literal("dealer"), damageScore: z.coerce.number().nonnegative("模拟伤害不能为负数").nullable().optional(), buffScore: z.null().optional() }),
-  base.extend({ role: z.literal("buffer"), buffScore: z.coerce.number().nonnegative("奶量不能为负数").nullable().optional(), damageScore: z.null().optional() }),
+  base.extend({ role: z.literal("dealer"), damageScore: z.coerce.number().positive("请输入有效的模拟伤害"), buffScore: z.null().optional() }),
+  base.extend({ role: z.literal("buffer"), buffScore: z.coerce.number().positive("请输入有效的奶量"), damageScore: z.null().optional() }),
 ]);
 
 export type CharacterInput = z.infer<typeof characterSchema>;
+export type CharacterFormInput = z.input<typeof characterSchema>;

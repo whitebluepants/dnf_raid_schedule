@@ -10,4 +10,14 @@ describe("character schema", () => {
   test("rejects invalid ownership-independent form data", () => {
     expect(characterSchema.safeParse({ accountId: "", name: "", className: "", role: "dealer", fame: 0, strengthTier: "high" }).success).toBe(false);
   });
+
+  test("requires the metric matching the selected role", () => {
+    const dealer = { accountId: "a", name: "剑魂", className: "剑魂", role: "dealer", fame: 80000, strengthTier: "high" };
+    const buffer = { accountId: "a", name: "奶妈", className: "圣职者", role: "buffer", fame: 70000, strengthTier: "medium" };
+
+    expect(characterSchema.safeParse(dealer).success).toBe(false);
+    expect(characterSchema.safeParse({ ...dealer, damageScore: 1200 }).success).toBe(true);
+    expect(characterSchema.safeParse(buffer).success).toBe(false);
+    expect(characterSchema.safeParse({ ...buffer, buffScore: 900 }).success).toBe(true);
+  });
 });

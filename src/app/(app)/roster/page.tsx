@@ -1,13 +1,21 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import Link from "next/link";
 
-const characters = [
-  { name: "破军", account: "蓝色账号", className: "剑魂", role: "C", fame: 84_520, tier: "high", metric: "模拟 1,240 亿" },
-  { name: "奶妈一号", account: "蓝色账号", className: "圣职者", role: "奶", fame: 78_300, tier: "medium", metric: "奶量 920" },
-  { name: "机械七号", account: "备用账号", className: "机械师", role: "C", fame: 76_110, tier: "medium", metric: "模拟 980 亿" },
-];
+import { CharacterForm } from "@/features/roster/character-form";
+import { CharacterList } from "@/features/roster/character-list";
+import { listRoster } from "@/features/roster/repository";
+import { CurrentSpaceError, requireCurrentSpace } from "@/lib/current-space";
+import { createServerClient } from "@/lib/supabase/server";
 
-export default function RosterPage() {
-  return <div className="space-y-6"><section className="flex items-end justify-between gap-4"><div><p className="text-sm font-semibold text-cyan-700">我的资料</p><h1 className="mt-1 text-3xl font-bold">账号与角色</h1><p className="mt-2 text-sm text-slate-600">名望和强度档位会影响半自动初排，团长仍可手动调整。</p></div><Button className="bg-cyan-600 text-white">新增角色</Button></section><Card className="divide-y divide-slate-200">{characters.map((character) => <article key={character.name} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><h2 className="font-bold">{character.name}</h2><Badge>{character.role}</Badge><Badge className={character.tier === "high" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}>{character.tier} 档</Badge></div><p className="mt-1 text-sm text-slate-500">{character.account} · {character.className}</p></div><div className="flex items-center gap-4 text-sm"><span className="font-semibold">{character.fame.toLocaleString()} 名望</span><span className="text-slate-600">{character.metric}</span><Button className="border border-slate-300 bg-white text-slate-800">编辑</Button></div></article>)}</Card></div>;
+export default async function RosterPage() {
+  const client = await createServerClient();
+  try {
+    const space = await requireCurrentSpace(client);
+    const accounts = await listRoster(space.groupId, space.profileId, client);
+    return <div className="space-y-6"><section className="flex items-end justify-between gap-4"><div><p className="text-sm font-semibold text-cyan-700">我的资料</p><h1 className="mt-1 text-3xl font-bold">账号与角色</h1><p className="mt-2 text-sm text-slate-600">名望和强度档位会影响半自动初排，团长仍可手动调整。</p></div><CharacterForm accounts={accounts} triggerLabel="新增角色" /></section><CharacterList accounts={accounts} /></div>;
+  } catch (error) {
+    if (error instanceof CurrentSpaceError) {
+      return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900"><h1 className="text-xl font-bold">请先选择空间</h1><p className="mt-2 text-sm">当前空间不可用。请先选择或加入一个空间后，再维护角色。</p><Link className="mt-4 inline-flex rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white" href="/spaces">前往空间页</Link></div>;
+    }
+    return <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-rose-900"><h1 className="text-xl font-bold">角色资料暂时无法读取</h1><p className="mt-2 text-sm">请稍后刷新页面重试；当前空间没有被更改。</p></div>;
+  }
 }
