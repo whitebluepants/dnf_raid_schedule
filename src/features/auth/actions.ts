@@ -41,10 +41,10 @@ export async function register(formData: FormData): Promise<Result<true, string>
   });
   if (error) return { ok: false, error: "该昵称可能已被使用，或注册暂时不可用" };
   if (!data.session || !data.user) return { ok: false, error: "请让管理员在 Supabase 关闭邮箱确认后再注册" };
-  const { error: profileError } = await client
-    .from("profiles")
-    .upsert({ id: data.user.id, display_name: parsed.data.nickname.trim() }, { onConflict: "id" });
-  return profileError ? { ok: false, error: "注册成功，但资料初始化失败" } : { ok: true, value: true };
+  // The database trigger creates this row in the same transaction as auth.users.
+  // Do not issue another RLS-protected request before the new browser session has
+  // propagated to the server client.
+  return { ok: true, value: true };
 }
 
 async function saveCurrentSpace(groupId: string): Promise<void> {
