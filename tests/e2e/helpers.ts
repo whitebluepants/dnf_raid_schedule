@@ -115,6 +115,28 @@ export async function addCharacter(
   await expect(page.getByRole("heading", { name: character.name })).toBeVisible();
 }
 
+export async function addCharacterToExistingAccount(
+  page: Page,
+  character: { account: string; name: string; role: "dealer" | "buffer" },
+) {
+  await page.getByRole("button", { name: "新增角色", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新增角色" });
+  await dialog.getByLabel("账号").selectOption({ label: character.account });
+  await dialog.getByLabel("角色名").fill(character.name);
+  await dialog.getByLabel("职业").fill(character.role === "buffer" ? "圣职者" : "剑魂");
+  await dialog.getByLabel("定位").selectOption(character.role);
+  await dialog.getByLabel("名望").fill(character.role === "buffer" ? "65000" : "70000");
+  await dialog.getByLabel("强度档位").selectOption("high");
+  if (character.role === "buffer") {
+    await dialog.getByLabel("奶量").fill("10000");
+  } else {
+    await dialog.getByLabel("模拟伤害").fill("1000");
+  }
+  await dialog.getByRole("button", { name: "保存角色", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("heading", { name: character.name })).toBeVisible();
+}
+
 export async function addCompleteHardWaveRoster(page: Page) {
   await goTo(page, "/roster");
   const characters = [
@@ -143,6 +165,10 @@ export async function createHardActivity(page: Page, title: string) {
 
 export async function signUpAllCharacters(page: Page, signupLink: Locator, characters: Array<{ name: string }>) {
   await signupLink.click();
+  await signUpCurrentActivity(page, characters);
+}
+
+export async function signUpCurrentActivity(page: Page, characters: Array<{ name: string }>) {
   // The current signup page uses the activity title as its only heading;
   // bind to the actual registration form and its submit control instead.
   const signupForm = page
