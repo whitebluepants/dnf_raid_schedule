@@ -17,12 +17,13 @@ export type Database = {
         Row: {
           id: string;
           display_name: string;
+          is_platform_admin: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: InsertShape<
           Database["public"]["Tables"]["profiles"]["Row"],
-          "created_at" | "updated_at"
+          "is_platform_admin" | "created_at" | "updated_at"
         >;
         Update: UpdateShape<Database["public"]["Tables"]["profiles"]["Row"]>;
         Relationships: [];
@@ -319,8 +320,28 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       replace_event_registration: { Args: { p_raid_event_id: string; p_state: Database["public"]["Enums"]["registration_state"]; p_character_ids: string[] }; Returns: boolean };
-      create_group: { Args: { p_name: string; p_invite_code: string }; Returns: string };
-      join_group_by_invite: { Args: { p_invite_code: string; p_nickname?: string }; Returns: string };
+      create_group: {
+        Args: { p_name: string };
+        Returns: { group_id: string; invite_code: string }[];
+      };
+      join_group_by_invite: { Args: { p_invite_code: string }; Returns: string };
+      get_space_context: {
+        Args: { p_group_id: string };
+        Returns: {
+          profile_id: string;
+          group_id: string;
+          role: Database["public"]["Enums"]["member_role"];
+          is_platform_admin: boolean;
+        }[];
+      };
+      set_group_member_role: {
+        Args: {
+          p_group_id: string;
+          p_profile_id: string;
+          p_role: Database["public"]["Enums"]["member_role"];
+        };
+        Returns: boolean;
+      };
       replace_schedule_snapshot: {
         Args: {
           p_raid_event_id: string;
@@ -331,6 +352,7 @@ export type Database = {
         Returns: number;
       };
       current_profile_id: { Args: Record<PropertyKey, never>; Returns: string };
+      is_platform_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_group_member: { Args: { target_group_id: string }; Returns: boolean };
       has_group_role: {
         Args: {
